@@ -16,9 +16,9 @@ import {
 const PERPLEXITY_ASK_TOOL: Tool = {
   name: "perplexity_ask",
   description:
-    "Engages in a conversation using the Sonar API. " +
-    "Accepts an array of messages (each with a role and content) " +
-    "and returns a ask completion response from the Perplexity model.",
+    "Real-time AI-powered answers with web search. " +
+    "Supports sonar (fast/cheap) and sonar-pro (high quality) models. " +
+    "Accepts an array of messages and returns a completion response with citations.",
   inputSchema: {
     type: "object",
     properties: {
@@ -39,6 +39,69 @@ const PERPLEXITY_ASK_TOOL: Tool = {
           required: ["role", "content"],
         },
         description: "Array of conversation messages",
+      },
+      model: {
+        type: "string",
+        enum: ["sonar", "sonar-pro"],
+        description: "Model to use: 'sonar' for fast/cost-effective queries, 'sonar-pro' for higher quality (default)",
+      },
+      search_domain_filter: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 20,
+        description: "Domain filter list. Prefix with '-' to exclude (denylist), otherwise include (allowlist). Maximum 20 domains. Examples: ['wikipedia.org', 'github.com'] for allowlist, ['-reddit.com', '-twitter.com'] for denylist.",
+      },
+      temperature: {
+        type: "number",
+        minimum: 0,
+        maximum: 2,
+        description: "Controls randomness. 0 = deterministic, 2 = maximum creativity. Default: 0.2",
+      },
+      max_tokens: {
+        type: "integer",
+        minimum: 1,
+        description: "Maximum tokens in the response. Model-specific limits apply.",
+      },
+      top_p: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        description: "Nucleus sampling threshold. Default: 0.9",
+      },
+      top_k: {
+        type: "integer",
+        minimum: 0,
+        description: "Top-k sampling. 0 = disabled. Default: 0",
+      },
+      search_mode: {
+        type: "string",
+        enum: ["web", "academic", "sec"],
+        description: "Source type filter: 'web' for general internet (default), 'academic' for scholarly articles and papers, 'sec' for SEC filings and financial documents",
+      },
+      search_recency_filter: {
+        type: "string",
+        enum: ["day", "week", "month", "year"],
+        description: "Filter results by recency. 'day' = last 24 hours, 'week' = last 7 days, 'month' = last 30 days, 'year' = last 365 days.",
+      },
+      search_after_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published after this date. Format: MM/DD/YYYY",
+      },
+      search_before_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published before this date. Format: MM/DD/YYYY",
+      },
+      last_updated_after: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated after this date. Format: MM/DD/YYYY",
+      },
+      last_updated_before: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated before this date. Format: MM/DD/YYYY",
       },
     },
     required: ["messages"],
@@ -76,6 +139,69 @@ const PERPLEXITY_RESEARCH_TOOL: Tool = {
         },
         description: "Array of conversation messages",
       },
+      reasoning_effort: {
+        type: "string",
+        enum: ["low", "medium", "high"],
+        description: "Controls research depth: 'low' for quick overviews, 'medium' for balanced research (default), 'high' for comprehensive deep research",
+      },
+      search_domain_filter: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 20,
+        description: "Domain filter list. Prefix with '-' to exclude (denylist), otherwise include (allowlist). Maximum 20 domains. Examples: ['wikipedia.org', 'github.com'] for allowlist, ['-reddit.com', '-twitter.com'] for denylist.",
+      },
+      temperature: {
+        type: "number",
+        minimum: 0,
+        maximum: 2,
+        description: "Controls randomness. 0 = deterministic, 2 = maximum creativity. Default: 0.2",
+      },
+      max_tokens: {
+        type: "integer",
+        minimum: 1,
+        description: "Maximum tokens in the response. Model-specific limits apply.",
+      },
+      top_p: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        description: "Nucleus sampling threshold. Default: 0.9",
+      },
+      top_k: {
+        type: "integer",
+        minimum: 0,
+        description: "Top-k sampling. 0 = disabled. Default: 0",
+      },
+      search_mode: {
+        type: "string",
+        enum: ["web", "academic", "sec"],
+        description: "Source type filter: 'web' for general internet (default), 'academic' for scholarly articles and papers, 'sec' for SEC filings and financial documents",
+      },
+      search_recency_filter: {
+        type: "string",
+        enum: ["day", "week", "month", "year"],
+        description: "Filter results by recency. 'day' = last 24 hours, 'week' = last 7 days, 'month' = last 30 days, 'year' = last 365 days.",
+      },
+      search_after_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published after this date. Format: MM/DD/YYYY",
+      },
+      search_before_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published before this date. Format: MM/DD/YYYY",
+      },
+      last_updated_after: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated after this date. Format: MM/DD/YYYY",
+      },
+      last_updated_before: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated before this date. Format: MM/DD/YYYY",
+      },
     },
     required: ["messages"],
   },
@@ -111,6 +237,64 @@ const PERPLEXITY_REASON_TOOL: Tool = {
           required: ["role", "content"],
         },
         description: "Array of conversation messages",
+      },
+      search_domain_filter: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 20,
+        description: "Domain filter list. Prefix with '-' to exclude (denylist), otherwise include (allowlist). Maximum 20 domains. Examples: ['wikipedia.org', 'github.com'] for allowlist, ['-reddit.com', '-twitter.com'] for denylist.",
+      },
+      temperature: {
+        type: "number",
+        minimum: 0,
+        maximum: 2,
+        description: "Controls randomness. 0 = deterministic, 2 = maximum creativity. Default: 0.2",
+      },
+      max_tokens: {
+        type: "integer",
+        minimum: 1,
+        description: "Maximum tokens in the response. Model-specific limits apply.",
+      },
+      top_p: {
+        type: "number",
+        minimum: 0,
+        maximum: 1,
+        description: "Nucleus sampling threshold. Default: 0.9",
+      },
+      top_k: {
+        type: "integer",
+        minimum: 0,
+        description: "Top-k sampling. 0 = disabled. Default: 0",
+      },
+      search_mode: {
+        type: "string",
+        enum: ["web", "academic", "sec"],
+        description: "Source type filter: 'web' for general internet (default), 'academic' for scholarly articles and papers, 'sec' for SEC filings and financial documents",
+      },
+      search_recency_filter: {
+        type: "string",
+        enum: ["day", "week", "month", "year"],
+        description: "Filter results by recency. 'day' = last 24 hours, 'week' = last 7 days, 'month' = last 30 days, 'year' = last 365 days.",
+      },
+      search_after_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published after this date. Format: MM/DD/YYYY",
+      },
+      search_before_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published before this date. Format: MM/DD/YYYY",
+      },
+      last_updated_after: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated after this date. Format: MM/DD/YYYY",
+      },
+      last_updated_before: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated before this date. Format: MM/DD/YYYY",
       },
     },
     required: ["messages"],
@@ -149,8 +333,107 @@ const PERPLEXITY_SEARCH_TOOL: Tool = {
         type: "string",
         description: "ISO 3166-1 alpha-2 country code for regional results (e.g., 'US', 'GB')",
       },
+      search_domain_filter: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 20,
+        description: "Domain filter list. Prefix with '-' to exclude (denylist), otherwise include (allowlist). Maximum 20 domains. Examples: ['wikipedia.org', 'github.com'] for allowlist, ['-reddit.com', '-twitter.com'] for denylist.",
+      },
+      search_recency_filter: {
+        type: "string",
+        enum: ["day", "week", "month", "year"],
+        description: "Filter results by recency. 'day' = last 24 hours, 'week' = last 7 days, 'month' = last 30 days, 'year' = last 365 days.",
+      },
+      search_after_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published after this date. Format: MM/DD/YYYY",
+      },
+      search_before_date: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results published before this date. Format: MM/DD/YYYY",
+      },
+      last_updated_after: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated after this date. Format: MM/DD/YYYY",
+      },
+      last_updated_before: {
+        type: "string",
+        pattern: "^\\d{2}/\\d{2}/\\d{4}$",
+        description: "Only include results last updated before this date. Format: MM/DD/YYYY",
+      },
     },
     required: ["query"],
+  },
+};
+
+/**
+ * Definition of the Perplexity Async Research Tool.
+ * This tool starts an async deep research job and returns a request_id for polling.
+ */
+const PERPLEXITY_RESEARCH_ASYNC_TOOL: Tool = {
+  name: "perplexity_research_async",
+  description:
+    "Start an async deep research job. Returns a request_id to poll for results. " +
+    "Use for complex research that may take several minutes. " +
+    "Poll with perplexity_research_status to check progress and retrieve results.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      messages: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            role: {
+              type: "string",
+              description: "Role of the message (e.g., system, user, assistant)",
+            },
+            content: {
+              type: "string",
+              description: "The content of the message",
+            },
+          },
+          required: ["role", "content"],
+        },
+        description: "Array of conversation messages",
+      },
+      reasoning_effort: {
+        type: "string",
+        enum: ["low", "medium", "high"],
+        description: "Controls research depth: 'low' for quick overviews, 'medium' for balanced research (default), 'high' for comprehensive deep research",
+      },
+      search_domain_filter: {
+        type: "array",
+        items: { type: "string" },
+        maxItems: 20,
+        description: "Domain filter list. Prefix with '-' to exclude (denylist), otherwise include (allowlist). Maximum 20 domains.",
+      },
+    },
+    required: ["messages"],
+  },
+};
+
+/**
+ * Definition of the Perplexity Research Status Tool.
+ * This tool checks the status of an async research job and retrieves results when complete.
+ */
+const PERPLEXITY_RESEARCH_STATUS_TOOL: Tool = {
+  name: "perplexity_research_status",
+  description:
+    "Check status of an async research job and retrieve results when complete. " +
+    "Use the request_id returned from perplexity_research_async.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      request_id: {
+        type: "string",
+        description: "The request_id returned from perplexity_research_async",
+      },
+    },
+    required: ["request_id"],
   },
 };
 
@@ -171,22 +454,107 @@ const TIMEOUT_MS = parseInt(process.env.PERPLEXITY_TIMEOUT_MS || "300000", 10);
  *
  * @param {Array<{ role: string; content: string }>} messages - An array of message objects.
  * @param {string} model - The model to use for the completion.
+ * @param {object} options - Additional options for the API request.
+ * @param {string} options.reasoning_effort - Controls research depth for sonar-deep-research model.
+ * @param {string[]} options.search_domain_filter - Domain filter list for search results.
+ * @param {number} options.temperature - Controls randomness (0-2).
+ * @param {number} options.max_tokens - Maximum tokens in the response.
+ * @param {number} options.top_p - Nucleus sampling threshold (0-1).
+ * @param {number} options.top_k - Top-k sampling (0 = disabled).
+ * @param {string} options.search_mode - Source type filter (web, academic, sec).
+ * @param {string} options.search_recency_filter - Filter by recency (day, week, month, year).
+ * @param {string} options.search_after_date - Only results after this date (MM/DD/YYYY).
+ * @param {string} options.search_before_date - Only results before this date (MM/DD/YYYY).
+ * @param {string} options.last_updated_after - Only results updated after this date (MM/DD/YYYY).
+ * @param {string} options.last_updated_before - Only results updated before this date (MM/DD/YYYY).
  * @returns {Promise<string>} The chat completion result with appended citations.
  * @throws Will throw an error if the API request fails.
  */
 async function performChatCompletion(
   messages: Array<{ role: string; content: string }>,
-  model: string = "sonar-pro"
+  model: string = "sonar-pro",
+  options?: {
+    reasoning_effort?: "low" | "medium" | "high";
+    search_domain_filter?: string[];
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    top_k?: number;
+    search_mode?: "web" | "academic" | "sec";
+    search_recency_filter?: "day" | "week" | "month" | "year";
+    search_after_date?: string;
+    search_before_date?: string;
+    last_updated_after?: string;
+    last_updated_before?: string;
+  }
 ): Promise<string> {
   // Construct the API endpoint URL and request body
   const url = new URL("https://api.perplexity.ai/chat/completions");
-  const body = {
+  const body: Record<string, unknown> = {
     model: model, // Model identifier passed as parameter
     messages: messages,
-    // Additional parameters can be added here if required (e.g., max_tokens, temperature, etc.)
-    // See the Sonar API documentation for more details: 
-    // https://docs.perplexity.ai/api-reference/chat-completions
   };
+
+  // Add reasoning_effort if provided (applicable for sonar-deep-research model)
+  if (options?.reasoning_effort) {
+    body.reasoning_effort = options.reasoning_effort;
+  }
+
+  // Add search_domain_filter if provided
+  if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
+    if (options.search_domain_filter.length > 20) {
+      throw new Error("search_domain_filter cannot exceed 20 domains");
+    }
+    body.search_domain_filter = options.search_domain_filter;
+  }
+
+  // Add generation parameters if provided
+  if (options?.temperature !== undefined) {
+    if (options.temperature < 0 || options.temperature > 2) {
+      throw new Error("temperature must be between 0 and 2");
+    }
+    body.temperature = options.temperature;
+  }
+  if (options?.max_tokens !== undefined) {
+    if (options.max_tokens < 1) {
+      throw new Error("max_tokens must be at least 1");
+    }
+    body.max_tokens = options.max_tokens;
+  }
+  if (options?.top_p !== undefined) {
+    if (options.top_p < 0 || options.top_p > 1) {
+      throw new Error("top_p must be between 0 and 1");
+    }
+    body.top_p = options.top_p;
+  }
+  if (options?.top_k !== undefined) {
+    if (options.top_k < 0) {
+      throw new Error("top_k must be non-negative");
+    }
+    body.top_k = options.top_k;
+  }
+
+  // Add search_mode if provided
+  if (options?.search_mode) {
+    body.search_mode = options.search_mode;
+  }
+
+  // Add date filtering parameters if provided
+  if (options?.search_recency_filter) {
+    body.search_recency_filter = options.search_recency_filter;
+  }
+  if (options?.search_after_date) {
+    body.search_after_date_filter = options.search_after_date;
+  }
+  if (options?.search_before_date) {
+    body.search_before_date_filter = options.search_before_date;
+  }
+  if (options?.last_updated_after) {
+    body.last_updated_after = options.last_updated_after;
+  }
+  if (options?.last_updated_before) {
+    body.last_updated_before = options.last_updated_before;
+  }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -281,6 +649,8 @@ function formatSearchResults(data: any): string {
  * @param {number} maxResults - Maximum number of results to return (1-20).
  * @param {number} maxTokensPerPage - Maximum tokens to extract per webpage.
  * @param {string} country - Optional ISO country code for regional results.
+ * @param {string[]} searchDomainFilter - Domain filter list for search results.
+ * @param {object} dateFilters - Optional date filtering parameters.
  * @returns {Promise<string>} The formatted search results.
  * @throws Will throw an error if the API request fails.
  */
@@ -288,7 +658,15 @@ async function performSearch(
   query: string,
   maxResults: number = 10,
   maxTokensPerPage: number = 1024,
-  country?: string
+  country?: string,
+  searchDomainFilter?: string[],
+  dateFilters?: {
+    search_recency_filter?: "day" | "week" | "month" | "year";
+    search_after_date?: string;
+    search_before_date?: string;
+    last_updated_after?: string;
+    last_updated_before?: string;
+  }
 ): Promise<string> {
   const url = new URL("https://api.perplexity.ai/search");
   const body: any = {
@@ -299,6 +677,30 @@ async function performSearch(
 
   if (country) {
     body.country = country;
+  }
+
+  if (searchDomainFilter && searchDomainFilter.length > 0) {
+    if (searchDomainFilter.length > 20) {
+      throw new Error("search_domain_filter cannot exceed 20 domains");
+    }
+    body.search_domain_filter = searchDomainFilter;
+  }
+
+  // Add date filtering parameters if provided
+  if (dateFilters?.search_recency_filter) {
+    body.search_recency_filter = dateFilters.search_recency_filter;
+  }
+  if (dateFilters?.search_after_date) {
+    body.search_after_date_filter = dateFilters.search_after_date;
+  }
+  if (dateFilters?.search_before_date) {
+    body.search_before_date_filter = dateFilters.search_before_date;
+  }
+  if (dateFilters?.last_updated_after) {
+    body.last_updated_after = dateFilters.last_updated_after;
+  }
+  if (dateFilters?.last_updated_before) {
+    body.last_updated_before = dateFilters.last_updated_before;
   }
 
   const controller = new AbortController();
@@ -347,6 +749,179 @@ async function performSearch(
   return formatSearchResults(data);
 }
 
+/**
+ * Starts an async deep research job using the Perplexity Async API.
+ * Returns a request_id that can be used to poll for results.
+ *
+ * @param {Array<{ role: string; content: string }>} messages - An array of message objects.
+ * @param {object} options - Additional options for the async research.
+ * @param {string} options.reasoning_effort - Controls research depth (low, medium, high).
+ * @param {string[]} options.search_domain_filter - Domain filter list for search results.
+ * @returns {Promise<{ request_id: string; status: string }>} The async job info.
+ * @throws Will throw an error if the API request fails.
+ */
+async function startAsyncResearch(
+  messages: Array<{ role: string; content: string }>,
+  options?: {
+    reasoning_effort?: "low" | "medium" | "high";
+    search_domain_filter?: string[];
+  }
+): Promise<{ request_id: string; status: string }> {
+  const url = new URL("https://api.perplexity.ai/async/chat/completions");
+  const body: Record<string, unknown> = {
+    model: "sonar-deep-research",
+    messages: messages,
+  };
+
+  if (options?.reasoning_effort) {
+    body.reasoning_effort = options.reasoning_effort;
+  }
+
+  if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
+    if (options.search_domain_filter.length > 20) {
+      throw new Error("search_domain_filter cannot exceed 20 domains");
+    }
+    body.search_domain_filter = options.search_domain_filter;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout: Perplexity Async API did not respond within ${TIMEOUT_MS}ms.`);
+    }
+    throw new Error(`Network error while calling Perplexity Async API: ${error}`);
+  }
+
+  if (!response.ok) {
+    let errorText;
+    try {
+      errorText = await response.text();
+    } catch (parseError) {
+      errorText = "Unable to parse error response";
+    }
+    throw new Error(
+      `Perplexity Async API error: ${response.status} ${response.statusText}\n${errorText}`
+    );
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    throw new Error(`Failed to parse JSON response from Perplexity Async API: ${jsonError}`);
+  }
+
+  return {
+    request_id: data.request_id,
+    status: data.status || "pending",
+  };
+}
+
+/**
+ * Gets the status and results of an async research job.
+ *
+ * @param {string} requestId - The request_id from startAsyncResearch.
+ * @returns {Promise<object>} The async job status and results.
+ * @throws Will throw an error if the API request fails.
+ */
+async function getAsyncResearchStatus(
+  requestId: string
+): Promise<{
+  request_id: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  created_at?: string;
+  completed_at?: string;
+  result?: string;
+  error?: string;
+}> {
+  const url = new URL(`https://api.perplexity.ai/async/chat/completions/${requestId}`);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout: Perplexity Async API did not respond within ${TIMEOUT_MS}ms.`);
+    }
+    throw new Error(`Network error while calling Perplexity Async API: ${error}`);
+  }
+
+  if (!response.ok) {
+    let errorText;
+    try {
+      errorText = await response.text();
+    } catch (parseError) {
+      errorText = "Unable to parse error response";
+    }
+    throw new Error(
+      `Perplexity Async API error: ${response.status} ${response.statusText}\n${errorText}`
+    );
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (jsonError) {
+    throw new Error(`Failed to parse JSON response from Perplexity Async API: ${jsonError}`);
+  }
+
+  const result: {
+    request_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    created_at?: string;
+    completed_at?: string;
+    result?: string;
+    error?: string;
+  } = {
+    request_id: data.request_id,
+    status: data.status,
+  };
+
+  if (data.created_at) result.created_at = data.created_at;
+  if (data.completed_at) result.completed_at = data.completed_at;
+  if (data.error) result.error = data.error;
+
+  // Format completed results with citations
+  if (data.status === "completed" && data.choices && data.choices[0]) {
+    let messageContent = data.choices[0].message.content;
+    if (data.citations && Array.isArray(data.citations) && data.citations.length > 0) {
+      messageContent += "\n\nCitations:\n";
+      data.citations.forEach((citation: string, index: number) => {
+        messageContent += `[${index + 1}] ${citation}\n`;
+      });
+    }
+    result.result = messageContent;
+  }
+
+  return result;
+}
+
 // Initialize the server with tool metadata and capabilities
 const server = new Server(
   {
@@ -365,7 +940,14 @@ const server = new Server(
  * When the client requests a list of tools, this handler returns all available Perplexity tools.
  */
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [PERPLEXITY_ASK_TOOL, PERPLEXITY_RESEARCH_TOOL, PERPLEXITY_REASON_TOOL, PERPLEXITY_SEARCH_TOOL],
+  tools: [
+    PERPLEXITY_ASK_TOOL,
+    PERPLEXITY_RESEARCH_TOOL,
+    PERPLEXITY_REASON_TOOL,
+    PERPLEXITY_SEARCH_TOOL,
+    PERPLEXITY_RESEARCH_ASYNC_TOOL,
+    PERPLEXITY_RESEARCH_STATUS_TOOL,
+  ],
 }));
 
 /**
@@ -388,7 +970,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         // Invoke the chat completion function with the provided messages
         const messages = args.messages;
-        const result = await performChatCompletion(messages, "sonar-pro");
+        // Determine model: default to sonar-pro if not specified or invalid
+        const model = typeof args.model === "string" && ["sonar", "sonar-pro"].includes(args.model)
+          ? args.model
+          : "sonar-pro";
+        const searchDomainFilter = Array.isArray(args.search_domain_filter)
+          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+          : undefined;
+        const options: Record<string, unknown> = {};
+        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+        if (typeof args.temperature === "number") options.temperature = args.temperature;
+        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
+        if (typeof args.top_p === "number") options.top_p = args.top_p;
+        if (typeof args.top_k === "number") options.top_k = args.top_k;
+        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
+          options.search_mode = args.search_mode;
+        }
+        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
+          options.search_recency_filter = args.search_recency_filter;
+        }
+        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
+        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
+        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
+        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        const result = await performChatCompletion(
+          messages,
+          model,
+          Object.keys(options).length > 0 ? options : undefined
+        );
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -400,7 +1009,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         // Invoke the chat completion function with the provided messages using the deep research model
         const messages = args.messages;
-        const result = await performChatCompletion(messages, "sonar-deep-research");
+        const reasoningEffort = typeof args.reasoning_effort === "string" &&
+          ["low", "medium", "high"].includes(args.reasoning_effort)
+          ? (args.reasoning_effort as "low" | "medium" | "high")
+          : undefined;
+        const searchDomainFilter = Array.isArray(args.search_domain_filter)
+          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+          : undefined;
+        const options: Record<string, unknown> = {};
+        if (reasoningEffort) options.reasoning_effort = reasoningEffort;
+        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+        if (typeof args.temperature === "number") options.temperature = args.temperature;
+        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
+        if (typeof args.top_p === "number") options.top_p = args.top_p;
+        if (typeof args.top_k === "number") options.top_k = args.top_k;
+        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
+          options.search_mode = args.search_mode;
+        }
+        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
+          options.search_recency_filter = args.search_recency_filter;
+        }
+        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
+        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
+        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
+        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        const result = await performChatCompletion(
+          messages,
+          "sonar-deep-research",
+          Object.keys(options).length > 0 ? options : undefined
+        );
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -412,7 +1049,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         // Invoke the chat completion function with the provided messages using the reasoning model
         const messages = args.messages;
-        const result = await performChatCompletion(messages, "sonar-reasoning-pro");
+        const searchDomainFilter = Array.isArray(args.search_domain_filter)
+          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+          : undefined;
+        const options: Record<string, unknown> = {};
+        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+        if (typeof args.temperature === "number") options.temperature = args.temperature;
+        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
+        if (typeof args.top_p === "number") options.top_p = args.top_p;
+        if (typeof args.top_k === "number") options.top_k = args.top_k;
+        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
+          options.search_mode = args.search_mode;
+        }
+        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
+          options.search_recency_filter = args.search_recency_filter;
+        }
+        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
+        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
+        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
+        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        const result = await performChatCompletion(
+          messages,
+          "sonar-reasoning-pro",
+          Object.keys(options).length > 0 ? options : undefined
+        );
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -426,15 +1086,77 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const maxResults = typeof max_results === "number" ? max_results : undefined;
         const maxTokensPerPage = typeof max_tokens_per_page === "number" ? max_tokens_per_page : undefined;
         const countryCode = typeof country === "string" ? country : undefined;
-        
+        const searchDomainFilter = Array.isArray(args.search_domain_filter)
+          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+          : undefined;
+        const dateFilters: Record<string, string> = {};
+        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
+          dateFilters.search_recency_filter = args.search_recency_filter;
+        }
+        if (typeof args.search_after_date === "string") dateFilters.search_after_date = args.search_after_date;
+        if (typeof args.search_before_date === "string") dateFilters.search_before_date = args.search_before_date;
+        if (typeof args.last_updated_after === "string") dateFilters.last_updated_after = args.last_updated_after;
+        if (typeof args.last_updated_before === "string") dateFilters.last_updated_before = args.last_updated_before;
+
         const result = await performSearch(
           query,
           maxResults,
           maxTokensPerPage,
-          countryCode
+          countryCode,
+          searchDomainFilter,
+          Object.keys(dateFilters).length > 0 ? dateFilters : undefined
         );
         return {
           content: [{ type: "text", text: result }],
+          isError: false,
+        };
+      }
+      case "perplexity_research_async": {
+        if (!Array.isArray(args.messages)) {
+          throw new Error("Invalid arguments for perplexity_research_async: 'messages' must be an array");
+        }
+        const messages = args.messages;
+        const reasoningEffort = typeof args.reasoning_effort === "string" &&
+          ["low", "medium", "high"].includes(args.reasoning_effort)
+          ? (args.reasoning_effort as "low" | "medium" | "high")
+          : undefined;
+        const searchDomainFilter = Array.isArray(args.search_domain_filter)
+          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+          : undefined;
+        const options: { reasoning_effort?: "low" | "medium" | "high"; search_domain_filter?: string[] } = {};
+        if (reasoningEffort) options.reasoning_effort = reasoningEffort;
+        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+        const result = await startAsyncResearch(
+          messages,
+          Object.keys(options).length > 0 ? options : undefined
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Async research job started.\n\nRequest ID: ${result.request_id}\nStatus: ${result.status}\n\nUse perplexity_research_status with this request_id to check progress and retrieve results.`
+          }],
+          isError: false,
+        };
+      }
+      case "perplexity_research_status": {
+        if (typeof args.request_id !== "string") {
+          throw new Error("Invalid arguments for perplexity_research_status: 'request_id' must be a string");
+        }
+        const statusResult = await getAsyncResearchStatus(args.request_id);
+        let responseText = `Request ID: ${statusResult.request_id}\nStatus: ${statusResult.status}`;
+        if (statusResult.created_at) responseText += `\nCreated: ${statusResult.created_at}`;
+        if (statusResult.completed_at) responseText += `\nCompleted: ${statusResult.completed_at}`;
+        if (statusResult.status === "failed" && statusResult.error) {
+          responseText += `\nError: ${statusResult.error}`;
+        }
+        if (statusResult.status === "completed" && statusResult.result) {
+          responseText += `\n\n--- Research Results ---\n\n${statusResult.result}`;
+        }
+        if (statusResult.status === "pending" || statusResult.status === "processing") {
+          responseText += `\n\nThe research is still in progress. Please poll again in a few seconds.`;
+        }
+        return {
+          content: [{ type: "text", text: responseText }],
           isError: false,
         };
       }
@@ -467,7 +1189,7 @@ async function runServer() {
   try {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("Perplexity MCP Server running on stdio with Ask, Research, Reason, and Search tools");
+    console.error("Perplexity MCP Server running on stdio with Ask, Research, Reason, Search, and Async Research tools");
   } catch (error) {
     console.error("Fatal error running server:", error);
     process.exit(1);

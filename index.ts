@@ -103,6 +103,18 @@ const PERPLEXITY_ASK_TOOL: Tool = {
         pattern: "^\\d{2}/\\d{2}/\\d{4}$",
         description: "Only include results last updated before this date. Format: MM/DD/YYYY",
       },
+      stream: {
+        type: "boolean",
+        description: "Enable streaming responses. When true, response is delivered incrementally. Default: false",
+      },
+      return_images: {
+        type: "boolean",
+        description: "Include relevant images from search results in the response. Default: false",
+      },
+      return_related_questions: {
+        type: "boolean",
+        description: "Include related question suggestions for follow-up queries. Default: false",
+      },
     },
     required: ["messages"],
   },
@@ -202,6 +214,14 @@ const PERPLEXITY_RESEARCH_TOOL: Tool = {
         pattern: "^\\d{2}/\\d{2}/\\d{4}$",
         description: "Only include results last updated before this date. Format: MM/DD/YYYY",
       },
+      return_images: {
+        type: "boolean",
+        description: "Include relevant images from search results in the response. Default: false",
+      },
+      return_related_questions: {
+        type: "boolean",
+        description: "Include related question suggestions for follow-up queries. Default: false",
+      },
     },
     required: ["messages"],
   },
@@ -296,6 +316,10 @@ const PERPLEXITY_REASON_TOOL: Tool = {
         pattern: "^\\d{2}/\\d{2}/\\d{4}$",
         description: "Only include results last updated before this date. Format: MM/DD/YYYY",
       },
+      stream: {
+        type: "boolean",
+        description: "Enable streaming responses. When true, response is delivered incrementally. Default: false",
+      },
     },
     required: ["messages"],
   },
@@ -309,13 +333,23 @@ const PERPLEXITY_SEARCH_TOOL: Tool = {
   name: "perplexity_search",
   description:
     "Performs web search using the Perplexity Search API. " +
+    "Supports single query or batch of up to 5 queries. " +
     "Returns ranked search results with titles, URLs, snippets, and metadata.",
   inputSchema: {
     type: "object",
     properties: {
       query: {
-        type: "string",
-        description: "Search query string",
+        oneOf: [
+          { type: "string", description: "Single search query" },
+          {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            maxItems: 5,
+            description: "Array of up to 5 search queries"
+          }
+        ],
+        description: "Search query or array of queries (max 5)",
       },
       max_results: {
         type: "number",
@@ -486,6 +520,8 @@ async function performChatCompletion(
     search_before_date?: string;
     last_updated_after?: string;
     last_updated_before?: string;
+    return_images?: boolean;
+    return_related_questions?: boolean;
   }
 ): Promise<string> {
   // Construct the API endpoint URL and request body
@@ -556,6 +592,14 @@ async function performChatCompletion(
     body.last_updated_before = options.last_updated_before;
   }
 
+  // Add return_images and return_related_questions if provided
+  if (options?.return_images) {
+    body.return_images = true;
+  }
+  if (options?.return_related_questions) {
+    body.return_related_questions = true;
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -600,7 +644,7 @@ async function performChatCompletion(
     throw new Error(`Failed to parse JSON response from Perplexity API: ${jsonError}`);
   }
 
-  // Directly retrieve the main message content from the response 
+  // Directly retrieve the main message content from the response
   let messageContent = data.choices[0].message.content;
 
   // If citations are provided, append them to the message content
@@ -611,7 +655,242 @@ async function performChatCompletion(
     });
   }
 
+  // If images are provided, append them to the message content
+  if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+    messageContent += "\n\nImages:\n";
+    data.images.forEach((img: { url: string; origin_url: string; height: number; width: number }, index: number) => {
+      messageContent += `[${index + 1}] ${img.url} (${img.width}x${img.height}) - Source: ${img.origin_url}\n`;
+    });
+  }
+
+  // If related questions are provided, append them to the message content
+  if (data.related_questions && Array.isArray(data.related_questions) && data.related_questions.length > 0) {
+    messageContent += "\n\nRelated Questions:\n";
+    data.related_questions.forEach((question: string, index: number) => {
+      messageContent += `${index + 1}. ${question}\n`;
+    });
+  }
+
   return messageContent;
+}
+
+/**
+ * Performs a streaming chat completion by sending a request to the Perplexity API.
+ * Streams content incrementally and returns the full response with citations.
+ *
+ * @param {Array<{ role: string; content: string }>} messages - An array of message objects.
+ * @param {string} model - The model to use for the completion.
+ * @param {object} options - Additional options for the API request.
+ * @returns {Promise<string>} The chat completion result with appended citations.
+ * @throws Will throw an error if the API request fails.
+ */
+async function performStreamingChatCompletion(
+  messages: Array<{ role: string; content: string }>,
+  model: string = "sonar-pro",
+  options?: {
+    search_domain_filter?: string[];
+    temperature?: number;
+    max_tokens?: number;
+    top_p?: number;
+    top_k?: number;
+    search_mode?: "web" | "academic" | "sec";
+    search_recency_filter?: "day" | "week" | "month" | "year";
+    search_after_date?: string;
+    search_before_date?: string;
+    last_updated_after?: string;
+    last_updated_before?: string;
+    return_images?: boolean;
+    return_related_questions?: boolean;
+  }
+): Promise<string> {
+  const url = new URL("https://api.perplexity.ai/chat/completions");
+  const body: Record<string, unknown> = {
+    model: model,
+    messages: messages,
+    stream: true,
+  };
+
+  // Add search_domain_filter if provided
+  if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
+    if (options.search_domain_filter.length > 20) {
+      throw new Error("search_domain_filter cannot exceed 20 domains");
+    }
+    body.search_domain_filter = options.search_domain_filter;
+  }
+
+  // Add generation parameters if provided
+  if (options?.temperature !== undefined) {
+    if (options.temperature < 0 || options.temperature > 2) {
+      throw new Error("temperature must be between 0 and 2");
+    }
+    body.temperature = options.temperature;
+  }
+  if (options?.max_tokens !== undefined) {
+    if (options.max_tokens < 1) {
+      throw new Error("max_tokens must be at least 1");
+    }
+    body.max_tokens = options.max_tokens;
+  }
+  if (options?.top_p !== undefined) {
+    if (options.top_p < 0 || options.top_p > 1) {
+      throw new Error("top_p must be between 0 and 1");
+    }
+    body.top_p = options.top_p;
+  }
+  if (options?.top_k !== undefined) {
+    if (options.top_k < 0) {
+      throw new Error("top_k must be non-negative");
+    }
+    body.top_k = options.top_k;
+  }
+
+  // Add search_mode if provided
+  if (options?.search_mode) {
+    body.search_mode = options.search_mode;
+  }
+
+  // Add date filtering parameters if provided
+  if (options?.search_recency_filter) {
+    body.search_recency_filter = options.search_recency_filter;
+  }
+  if (options?.search_after_date) {
+    body.search_after_date_filter = options.search_after_date;
+  }
+  if (options?.search_before_date) {
+    body.search_before_date_filter = options.search_before_date;
+  }
+  if (options?.last_updated_after) {
+    body.last_updated_after = options.last_updated_after;
+  }
+  if (options?.last_updated_before) {
+    body.last_updated_before = options.last_updated_before;
+  }
+
+  // Add return_images and return_related_questions if provided
+  if (options?.return_images) {
+    body.return_images = true;
+  }
+  if (options?.return_related_questions) {
+    body.return_related_questions = true;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout: Perplexity API did not respond within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
+    }
+    throw new Error(`Network error while calling Perplexity API: ${error}`);
+  }
+
+  if (!response.ok) {
+    let errorText;
+    try {
+      errorText = await response.text();
+    } catch (parseError) {
+      errorText = "Unable to parse error response";
+    }
+    throw new Error(
+      `Perplexity API error: ${response.status} ${response.statusText}\n${errorText}`
+    );
+  }
+
+  // Read the streaming response
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("No response body available for streaming");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullContent = "";
+  let citations: string[] = [];
+  let images: Array<{ url: string; origin_url: string; height: number; width: number }> = [];
+  let relatedQuestions: string[] = [];
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") {
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+            }
+            // Capture citations from the final message if available
+            if (parsed.citations && Array.isArray(parsed.citations)) {
+              citations = parsed.citations;
+            }
+            // Capture images from the final message if available
+            if (parsed.images && Array.isArray(parsed.images)) {
+              images = parsed.images;
+            }
+            // Capture related questions from the final message if available
+            if (parsed.related_questions && Array.isArray(parsed.related_questions)) {
+              relatedQuestions = parsed.related_questions;
+            }
+          } catch {
+            // Skip invalid JSON lines
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  // Append citations if available
+  if (citations.length > 0) {
+    fullContent += "\n\nCitations:\n";
+    citations.forEach((citation: string, index: number) => {
+      fullContent += `[${index + 1}] ${citation}\n`;
+    });
+  }
+
+  // Append images if available
+  if (images.length > 0) {
+    fullContent += "\n\nImages:\n";
+    images.forEach((img, index) => {
+      fullContent += `[${index + 1}] ${img.url} (${img.width}x${img.height}) - Source: ${img.origin_url}\n`;
+    });
+  }
+
+  // Append related questions if available
+  if (relatedQuestions.length > 0) {
+    fullContent += "\n\nRelated Questions:\n";
+    relatedQuestions.forEach((question, index) => {
+      fullContent += `${index + 1}. ${question}\n`;
+    });
+  }
+
+  return fullContent;
 }
 
 /**
@@ -643,7 +922,46 @@ function formatSearchResults(data: any): string {
 }
 
 /**
- * Performs a web search using the Perplexity Search API.
+ * Formats multi-query search results into a readable string.
+ *
+ * @param {Array<{query: string, data: any, error: string | null}>} results - The search results per query.
+ * @returns {string} Formatted multi-query search results.
+ */
+function formatMultiQueryResults(
+  results: Array<{ query: string; data: any; error: string | null }>
+): string {
+  const sections = results.map((result, queryIndex) => {
+    const header = `## Query ${queryIndex + 1}: "${result.query}"\n`;
+
+    if (result.error) {
+      return header + `\n**Error:** ${result.error}\n`;
+    }
+
+    if (!result.data?.results || !Array.isArray(result.data.results)) {
+      return header + `\nNo search results found.\n`;
+    }
+
+    let formattedResults = `\nFound ${result.data.results.length} results:\n\n`;
+    result.data.results.forEach((r: any, index: number) => {
+      formattedResults += `${index + 1}. **${r.title}**\n`;
+      formattedResults += `   URL: ${r.url}\n`;
+      if (r.snippet) {
+        formattedResults += `   ${r.snippet}\n`;
+      }
+      if (r.date) {
+        formattedResults += `   Date: ${r.date}\n`;
+      }
+      formattedResults += `\n`;
+    });
+
+    return header + formattedResults;
+  });
+
+  return sections.join("\n---\n\n");
+}
+
+/**
+ * Performs a single web search using the Perplexity Search API.
  *
  * @param {string} query - The search query string.
  * @param {number} maxResults - Maximum number of results to return (1-20).
@@ -651,10 +969,10 @@ function formatSearchResults(data: any): string {
  * @param {string} country - Optional ISO country code for regional results.
  * @param {string[]} searchDomainFilter - Domain filter list for search results.
  * @param {object} dateFilters - Optional date filtering parameters.
- * @returns {Promise<string>} The formatted search results.
+ * @returns {Promise<any>} The raw search results data.
  * @throws Will throw an error if the API request fails.
  */
-async function performSearch(
+async function performSingleSearch(
   query: string,
   maxResults: number = 10,
   maxTokensPerPage: number = 1024,
@@ -667,7 +985,7 @@ async function performSearch(
     last_updated_after?: string;
     last_updated_before?: string;
   }
-): Promise<string> {
+): Promise<any> {
   const url = new URL("https://api.perplexity.ai/search");
   const body: any = {
     query: query,
@@ -746,7 +1064,78 @@ async function performSearch(
     throw new Error(`Failed to parse JSON response from Perplexity Search API: ${jsonError}`);
   }
 
-  return formatSearchResults(data);
+  return data;
+}
+
+/**
+ * Performs web search using the Perplexity Search API.
+ * Supports single query or batch of up to 5 queries.
+ *
+ * @param {string | string[]} query - The search query string or array of queries (max 5).
+ * @param {number} maxResults - Maximum number of results per query to return (1-20).
+ * @param {number} maxTokensPerPage - Maximum tokens to extract per webpage.
+ * @param {string} country - Optional ISO country code for regional results.
+ * @param {string[]} searchDomainFilter - Domain filter list for search results.
+ * @param {object} dateFilters - Optional date filtering parameters.
+ * @returns {Promise<string>} The formatted search results.
+ * @throws Will throw an error if the API request fails or query count exceeds 5.
+ */
+async function performSearch(
+  query: string | string[],
+  maxResults: number = 10,
+  maxTokensPerPage: number = 1024,
+  country?: string,
+  searchDomainFilter?: string[],
+  dateFilters?: {
+    search_recency_filter?: "day" | "week" | "month" | "year";
+    search_after_date?: string;
+    search_before_date?: string;
+    last_updated_after?: string;
+    last_updated_before?: string;
+  }
+): Promise<string> {
+  const queries = Array.isArray(query) ? query : [query];
+
+  if (queries.length === 0) {
+    throw new Error("At least one query is required");
+  }
+  if (queries.length > 5) {
+    throw new Error("Maximum 5 queries per request");
+  }
+
+  // Single query - return simple format
+  if (queries.length === 1) {
+    const data = await performSingleSearch(
+      queries[0],
+      maxResults,
+      maxTokensPerPage,
+      country,
+      searchDomainFilter,
+      dateFilters
+    );
+    return formatSearchResults(data);
+  }
+
+  // Multiple queries - execute in parallel and format grouped results
+  const results = await Promise.all(
+    queries.map(async (q) => {
+      try {
+        const data = await performSingleSearch(
+          q,
+          maxResults,
+          maxTokensPerPage,
+          country,
+          searchDomainFilter,
+          dateFilters
+        );
+        return { query: q, data, error: null };
+      } catch (error) {
+        return { query: q, data: null, error: error instanceof Error ? error.message : String(error) };
+      }
+    })
+  );
+
+  return formatMultiQueryResults(results);
 }
 
 /**
@@ -974,6 +1363,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const model = typeof args.model === "string" && ["sonar", "sonar-pro"].includes(args.model)
           ? args.model
           : "sonar-pro";
+        const useStreaming = args.stream === true;
         const searchDomainFilter = Array.isArray(args.search_domain_filter)
           ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
           : undefined;
@@ -993,11 +1383,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
         if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
         if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        const result = await performChatCompletion(
-          messages,
-          model,
-          Object.keys(options).length > 0 ? options : undefined
-        );
+        if (args.return_images === true) options.return_images = true;
+        if (args.return_related_questions === true) options.return_related_questions = true;
+        const result = useStreaming
+          ? await performStreamingChatCompletion(
+              messages,
+              model,
+              Object.keys(options).length > 0 ? options : undefined
+            )
+          : await performChatCompletion(
+              messages,
+              model,
+              Object.keys(options).length > 0 ? options : undefined
+            );
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -1033,6 +1431,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
         if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
         if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        if (args.return_images === true) options.return_images = true;
+        if (args.return_related_questions === true) options.return_related_questions = true;
         const result = await performChatCompletion(
           messages,
           "sonar-deep-research",
@@ -1049,6 +1449,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         // Invoke the chat completion function with the provided messages using the reasoning model
         const messages = args.messages;
+        const useStreaming = args.stream === true;
         const searchDomainFilter = Array.isArray(args.search_domain_filter)
           ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
           : undefined;
@@ -1068,21 +1469,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
         if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
         if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        const result = await performChatCompletion(
-          messages,
-          "sonar-reasoning-pro",
-          Object.keys(options).length > 0 ? options : undefined
-        );
+        const result = useStreaming
+          ? await performStreamingChatCompletion(
+              messages,
+              "sonar-reasoning-pro",
+              Object.keys(options).length > 0 ? options : undefined
+            )
+          : await performChatCompletion(
+              messages,
+              "sonar-reasoning-pro",
+              Object.keys(options).length > 0 ? options : undefined
+            );
         return {
           content: [{ type: "text", text: result }],
           isError: false,
         };
       }
       case "perplexity_search": {
-        if (typeof args.query !== "string") {
-          throw new Error("Invalid arguments for perplexity_search: 'query' must be a string");
+        // Validate query: must be string or array of strings
+        const isValidQuery = typeof args.query === "string" ||
+          (Array.isArray(args.query) && args.query.every((q: unknown) => typeof q === "string"));
+        if (!isValidQuery) {
+          throw new Error("Invalid arguments for perplexity_search: 'query' must be a string or array of strings");
         }
-        const { query, max_results, max_tokens_per_page, country } = args;
+        // Validate array length if array
+        if (Array.isArray(args.query) && args.query.length > 5) {
+          throw new Error("Invalid arguments for perplexity_search: maximum 5 queries allowed");
+        }
+        const query = args.query as string | string[];
+        const { max_results, max_tokens_per_page, country } = args;
         const maxResults = typeof max_results === "number" ? max_results : undefined;
         const maxTokensPerPage = typeof max_tokens_per_page === "number" ? max_tokens_per_page : undefined;
         const countryCode = typeof country === "string" ? country : undefined;

@@ -35,7 +35,7 @@ npm run watch    # Watch mode for development
 
 Single-file server implementation in `index.ts`:
 - Tool definitions (JSON schemas)
-- API request handlers (`performChatCompletion`, `performSearch`, `startAsyncResearch`, `getAsyncResearchStatus`)
+- API request handlers (`performChatCompletion`, `performStreamingChatCompletion`, `performSearch`, `startAsyncResearch`, `getAsyncResearchStatus`)
 - MCP server setup with stdio transport
 - Request routing via `CallToolRequestSchema` handler
 
@@ -70,9 +70,32 @@ All chat completion tools (`perplexity_ask`, `perplexity_research`, `perplexity_
 
 ### Tool-Specific Parameters
 
-- `perplexity_ask`: `model` (sonar / sonar-pro, default: sonar-pro)
-- `perplexity_research`: `reasoning_effort` (low / medium / high)
+- `perplexity_ask`: `model` (sonar / sonar-pro), `stream`, `return_images`, `return_related_questions`
+- `perplexity_research`: `reasoning_effort` (low / medium / high), `return_images`, `return_related_questions`
+- `perplexity_reason`: `stream` (boolean)
 - `perplexity_research_async`: `reasoning_effort`, `search_domain_filter`
+
+### Streaming Support
+
+`perplexity_ask` and `perplexity_reason` support streaming responses via the `stream` parameter:
+- When `stream: true`, responses are delivered incrementally using SSE format
+- Citations are appended after the stream completes
+- Default: `false` (non-streaming)
+
+### Images & Related Questions
+
+`perplexity_ask` and `perplexity_research` support enhanced responses:
+- `return_images: true` - Include relevant images (url, origin_url, dimensions)
+- `return_related_questions: true` - Include follow-up query suggestions
+- Both default to `false`
+
+### Multi-Query Search
+
+`perplexity_search` supports batch searches:
+- `query`: string OR array of strings (max 5)
+- Single query returns simple format, multiple queries return grouped results
+- Queries execute in parallel for efficiency
+- Each query subject to same filters (`max_results`, `search_domain_filter`, etc.)
 
 ## Code Patterns
 

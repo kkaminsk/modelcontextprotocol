@@ -1,7 +1,7 @@
 # OpenSpec Proposal 009: Images and Related Questions
 
 **Priority:** P2 - Medium
-**Status:** Proposed
+**Status:** Completed
 **Date:** 2025-12-21
 **Affected Tools:** `perplexity_ask`, `perplexity_research`
 

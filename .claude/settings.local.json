@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.perplexity.ai)",
+      "Bash(npm install:*)",
+      "Bash(mkdir:*)",
+      "Bash(dir /s /b \"C:\\\\temp\\\\GitHub\\\\modelcontextprotocol\\\\openspec\\\\changes\")",
+      "Bash(npm run build:*)",
+      "Bash(npx openspec:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd Perplexity API enhancements and archive completed proposals\n\nImplement 7 API enhancement proposals \\(001-007\\):\n- Model selection \\(sonar/sonar-pro\\) for perplexity_ask\n- Reasoning effort parameter for deep research\n- Search domain filtering across all tools\n- Async research API with polling \\(new tools\\)\n- Search mode \\(web/academic/sec\\)\n- Temperature, max_tokens, top_p, top_k parameters\n- Date filtering \\(recency, date ranges, last updated\\)\n\nUpdate CLAUDE.md with comprehensive parameter documentation.\nArchive completed proposals to openspec/changes/archive/.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(ls:*)",
+      "Bash(mv:*)"
+    ]
+  }
+}

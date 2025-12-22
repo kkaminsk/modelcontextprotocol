@@ -7,30 +7,20 @@ This directory contains proposals for addressing technical disconnects between t
 
 ## Active Proposals
 
-### P2 - Medium (Enhanced Functionality)
-
-| # | Proposal | Affected Tools | Status |
-|---|----------|----------------|--------|
-| [008](008-streaming-support.md) | Streaming Response Support | `ask`, `reason` | Proposed |
-| [009](009-images-related-questions.md) | Images & Related Questions | `ask`, `research` | Proposed |
-
-### P3 - Low (Nice to Have)
-
-| # | Proposal | Affected Tools | Status |
-|---|----------|----------------|--------|
-| [010](010-multi-query-search.md) | Multi-Query Search | `perplexity_search` | Proposed |
+No active proposals.
 
 ## Archived (Implemented)
 
-See [archive/2025-12-21-perplexity-api-enhancements/](archive/2025-12-21-perplexity-api-enhancements/) for completed proposals:
+See [archive/2025-12-21-perplexity-api-enhancements/](archive/2025-12-21-perplexity-api-enhancements/) for proposals 001-007.
 
-- 001 - Reasoning Effort Parameter
-- 002 - Search Domain Filter
-- 003 - Async Research API
-- 004 - Search Mode Parameter
-- 005 - Temperature & Max Tokens
-- 006 - Date Filtering Parameters
-- 007 - Sonar Model Selection
+See [archive/2025-12-21-streaming-support/](archive/2025-12-21-streaming-support/) for:
+- 008 - Streaming Response Support
+
+See [archive/2025-12-21-images-related-questions/](archive/2025-12-21-images-related-questions/) for:
+- 009 - Images & Related Questions
+
+See [archive/2025-12-21-multi-query-search/](archive/2025-12-21-multi-query-search/) for:
+- 010 - Multi-Query Search
 
 ## Proposal Status Key
 

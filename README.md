@@ -1,6 +1,6 @@
 # Perplexity MCP Server
 
-An unofficial Model Context Protocol (MCP) server that provides AI assistants with Perplexity API capabilities including real-time web search, deep research, and advanced reasoning.
+An unofficial Model Context Protocol (MCP) server fork that provides AI assistants with Perplexity API capabilities including real-time web search, deep research, and advanced reasoning.
 
 ## Available Tools
 

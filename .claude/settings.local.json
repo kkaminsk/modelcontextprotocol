@@ -12,7 +12,12 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd Perplexity API enhancements and archive completed proposals\n\nImplement 7 API enhancement proposals \\(001-007\\):\n- Model selection \\(sonar/sonar-pro\\) for perplexity_ask\n- Reasoning effort parameter for deep research\n- Search domain filtering across all tools\n- Async research API with polling \\(new tools\\)\n- Search mode \\(web/academic/sec\\)\n- Temperature, max_tokens, top_p, top_k parameters\n- Date filtering \\(recency, date ranges, last updated\\)\n\nUpdate CLAUDE.md with comprehensive parameter documentation.\nArchive completed proposals to openspec/changes/archive/.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(ls:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nUpdate README with comprehensive tool documentation\n\nDocument all 6 tools with parameter tables:\n- perplexity_ask: model selection, streaming, images, related questions\n- perplexity_research: reasoning_effort, images, related questions\n- perplexity_reason: streaming support\n- perplexity_search: batch queries \\(up to 5\\)\n- perplexity_research_async: async deep research\n- perplexity_research_status: poll async results\n\nAdd common parameters section covering generation controls,\nsearch filters, and date filters.\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(npm audit fix:*)",
+      "Bash(git commit:*)",
+      "mcp__perplexity__perplexity_reason"
     ]
   }
 }

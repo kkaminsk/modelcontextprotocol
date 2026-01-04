@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Perplexity MCP Server"
+           Manufacturer="Perplexity AI"
+           Version="0.2.2"
+           UpgradeCode="E8F3B2A1-5C4D-4E6F-8A9B-0C1D2E3F4A5B"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="Perplexity MCP Server - Official MCP server for Perplexity API Platform"
+                        Manufacturer="Perplexity AI" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed."
+                  AllowSameVersionUpgrades="yes" />
+
+    <Media Id="1" Cabinet="perplexity.cab" EmbedCab="yes" />
+
+    <!-- Properties -->
+    <Property Id="PERPLEXITY_API_KEY" Secure="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- Directory Structure -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Perplexity MCP Server">
+        <Directory Id="NodeFolder" Name="node" />
+        <Directory Id="ServerFolder" Name="server">
+          <Directory Id="DistFolder" Name="dist" />
+        </Directory>
+        <Directory Id="ScriptsFolder" Name="scripts" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Main Components -->
+    <ComponentGroup Id="MainComponents" Directory="INSTALLFOLDER">
+      <Component Id="WrapperScript" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" Bitness="always64">
+        <File Id="PerplexityMcpCmd" Source="files\perplexity-mcp.cmd" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Server dist files -->
+    <ComponentGroup Id="ServerDistComponents" Directory="DistFolder">
+      <Component Id="ServerIndexJs" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012" Bitness="always64">
+        <File Id="ServerIndexJs" Source="..\dist\index.js" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Server package.json -->
+    <ComponentGroup Id="ServerRootComponents" Directory="ServerFolder">
+      <Component Id="ServerPackageJson" Guid="C3D4E5F6-A7B8-9012-CDEF-345678901234" Bitness="always64">
+        <File Id="ServerPackageJson" Source="..\package.json" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Configuration Scripts -->
+    <ComponentGroup Id="ScriptComponents" Directory="ScriptsFolder">
+      <Component Id="ConfigureScript" Guid="D4E5F6A7-B8C9-0123-DEFA-456789012345" Bitness="always64">
+        <File Id="ConfigureMcpClientsPs1" Source="CustomActions\ConfigureMcpClients.ps1" KeyPath="yes" />
+      </Component>
+      <Component Id="RemoveScript" Guid="E5F6A7B8-C9D0-1234-EFAB-567890123456" Bitness="always64">
+        <File Id="RemoveMcpClientsPs1" Source="CustomActions\RemoveMcpClients.ps1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Environment Variable Component -->
+    <Component Id="ApiKeyEnvVar" Directory="INSTALLFOLDER" Guid="F6A7B8C9-D0E1-2345-FABC-678901234567" Bitness="always64"
+               Condition="PERPLEXITY_API_KEY">
+      <Environment Id="PerplexityApiKeyEnv"
+                   Name="PERPLEXITY_API_KEY"
+                   Value="[PERPLEXITY_API_KEY]"
+                   Permanent="no"
+                   Part="all"
+                   Action="set"
+                   System="no" />
+      <RegistryValue Root="HKCU"
+                     Key="Software\Perplexity\MCP Server"
+                     Name="ApiKeySet"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Registry for Add/Remove Programs -->
+    <Component Id="RegistryEntries" Directory="INSTALLFOLDER" Guid="A7B8C9D0-E1F2-3456-ABCD-789012345678" Bitness="always64">
+      <RegistryKey Root="HKCU" Key="Software\Perplexity\MCP Server">
+        <RegistryValue Name="InstallPath" Type="string" Value="[INSTALLFOLDER]" />
+        <RegistryValue Name="Version" Type="string" Value="0.2.2" />
+      </RegistryKey>
+      <RegistryValue Root="HKCU"
+                     Key="Software\Perplexity\MCP Server"
+                     Name="Installed"
+                     Type="integer"
+                     Value="1"
+                     KeyPath="yes" />
+    </Component>
+
+    <!-- Feature -->
+    <Feature Id="ProductFeature" Title="Perplexity MCP Server" Level="1">
+      <ComponentGroupRef Id="MainComponents" />
+      <ComponentGroupRef Id="ServerDistComponents" />
+      <ComponentGroupRef Id="ServerRootComponents" />
+      <ComponentGroupRef Id="ScriptComponents" />
+      <ComponentGroupRef Id="NodeComponents" />
+      <ComponentRef Id="ApiKeyEnvVar" />
+      <ComponentRef Id="RegistryEntries" />
+    </Feature>
+
+    <!-- Custom Actions for Client Configuration -->
+    <Property Id="POWERSHELLEXE" Value="powershell.exe" />
+
+    <SetProperty Id="ConfigureClients"
+                 Before="ConfigureClients"
+                 Sequence="execute"
+                 Value="&quot;[POWERSHELLEXE]&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]scripts\ConfigureMcpClients.ps1&quot; -InstallFolder &quot;[INSTALLFOLDER].&quot; -ApiKey &quot;[PERPLEXITY_API_KEY]&quot;" />
+
+    <CustomAction Id="ConfigureClients"
+                  DllEntry="WixQuietExec64"
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore"
+                  BinaryRef="Wix4UtilCA_X64" />
+
+    <InstallExecuteSequence>
+      <Custom Action="ConfigureClients" After="InstallFiles" Condition="NOT Installed AND NOT REMOVE" />
+    </InstallExecuteSequence>
+
+    <!-- UI -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALTEXT" Value="Thank you for installing Perplexity MCP Server. Please restart your MCP clients to use the server." />
+
+    <ui:WixUI Id="WixUI_InstallDir" />
+
+    <WixVariable Id="WixUILicenseRtf" Value="assets\license.rtf" />
+
+  </Package>
+
+  <!-- Custom API Key Dialog -->
+  <Fragment>
+    <UI>
+      <Dialog Id="ApiKeyDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Perplexity API Key" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter your Perplexity API key to configure the server." />
+
+        <Control Id="ApiKeyLabel" Type="Text" X="20" Y="60" Width="330" Height="15" NoPrefix="yes" Text="API Key (required):" />
+        <Control Id="ApiKeyUrl" Type="Text" X="20" Y="78" Width="330" Height="15" NoPrefix="yes" Text="Get your key from: https://www.perplexity.ai/account/api" />
+
+        <Control Id="ApiKeyEdit" Type="Edit" X="20" Y="100" Width="330" Height="18" Property="PERPLEXITY_API_KEY" />
+
+        <Control Id="ApiKeyNote" Type="Text" X="20" Y="130" Width="330" Height="50" NoPrefix="yes" Text="The API key will be stored as a user environment variable and the installer will configure Claude Desktop, Claude Code, Cursor, and Codex (if installed)." />
+
+        <Control Id="Back" Type="PushButton" X="156" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)" />
+        <Control Id="Next" Type="PushButton" X="212" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)"
+                 EnableCondition="PERPLEXITY_API_KEY &lt;&gt; &quot;&quot;"
+                 DisableCondition="PERPLEXITY_API_KEY = &quot;&quot;">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg" Condition="PERPLEXITY_API_KEY &lt;&gt; &quot;&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" />
+        </Control>
+      </Dialog>
+
+      <!-- Insert API Key dialog after InstallDirDlg -->
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ApiKeyDlg" Order="4" />
+      <Publish Dialog="ApiKeyDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="ApiKeyDlg" Order="1" Condition="NOT Installed" />
+    </UI>
+  </Fragment>
+
+</Wix>

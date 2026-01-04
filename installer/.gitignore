@@ -1,0 +1,11 @@
+# Build outputs
+staging/
+output/
+*.msi
+
+# WiX build artifacts
+obj/
+bin/
+
+# Generated files
+NodeComponents.wxs

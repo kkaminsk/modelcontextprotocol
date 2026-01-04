@@ -32,6 +32,8 @@
   ],
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
+    "build:installer": "powershell -ExecutionPolicy Bypass -File installer/Build-Installer.ps1",
+    "build:installer:clean": "powershell -ExecutionPolicy Bypass -File installer/Build-Installer.ps1 -Clean",
     "prepare": "npm run build",
     "watch": "tsc --watch"
   },

@@ -93,6 +93,37 @@ The following parameters are available on `perplexity_ask`, `perplexity_research
 
 > **Note:** `perplexity_search` supports `search_domain_filter` and all date filters, but not generation controls or `search_mode`.
 
+## Installation
+
+### Windows Installer (Recommended for Windows)
+
+Download and run the MSI installer for a one-click setup:
+
+1. Download `PerplexityMCP.msi` from the [Releases](https://github.com/perplexityai/modelcontextprotocol/releases) page
+2. Run the installer and enter your Perplexity API key when prompted
+3. The installer automatically configures Claude Desktop, Claude Code, Cursor, and Codex
+
+The installer bundles Node.js, so no prerequisites are required.
+
+**Silent install:**
+```powershell
+msiexec /i PerplexityMCP.msi PERPLEXITY_API_KEY="your_key_here" /qn
+```
+
+### npm / npx
+
+For manual installation or non-Windows platforms:
+
+```bash
+npx @perplexity-ai/mcp-server
+```
+
+Or install globally:
+
+```bash
+npm install -g @perplexity-ai/mcp-server
+```
+
 ## Configuration
 
 ### Get Your API Key

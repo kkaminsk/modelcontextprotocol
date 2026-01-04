@@ -1,0 +1,13 @@
+<Project Sdk="WixToolset.Sdk/4.0.5">
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <!-- Suppress ICE30 - false positives from files in different subdirectories with same name -->
+    <SuppressIces>ICE30</SuppressIces>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="4.0.*" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="4.0.*" />
+  </ItemGroup>
+</Project>

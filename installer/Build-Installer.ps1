@@ -156,6 +156,20 @@ function Build-NodeComponentsWxs {
             ).Replace("-", "").Substring(0, 16)
             $dirId = "NodeDir_$dirHash"
             $directories[$relativeDir] = $dirId
+
+            # Also add all parent directories to ensure complete tree
+            $parentPath = $relativeDir
+            while ($parentPath) {
+                $parentPath = Split-Path -Parent $parentPath
+                if ($parentPath -and $parentPath -ne "" -and -not $directories.ContainsKey($parentPath)) {
+                    $parentHash = [System.BitConverter]::ToString(
+                        [System.Security.Cryptography.MD5]::Create().ComputeHash(
+                            [System.Text.Encoding]::UTF8.GetBytes($parentPath)
+                        )
+                    ).Replace("-", "").Substring(0, 16)
+                    $directories[$parentPath] = "NodeDir_$parentHash"
+                }
+            }
         }
 
         # Create a unique GUID for each component using MD5 hash
@@ -175,25 +189,46 @@ function Build-NodeComponentsWxs {
         }
     }
 
-    # Build directory structure XML
-    $dirXml = ""
-    $sortedDirs = $directories.Keys | Sort-Object
-    foreach ($dir in $sortedDirs) {
-        $dirId = $directories[$dir]
-        $dirName = Split-Path -Leaf $dir
-        $parentDir = Split-Path -Parent $dir
-        $parentId = if ($parentDir) {
-            $parentHash = [System.BitConverter]::ToString(
-                [System.Security.Cryptography.MD5]::Create().ComputeHash(
-                    [System.Text.Encoding]::UTF8.GetBytes($parentDir)
-                )
-            ).Replace("-", "").Substring(0, 16)
-            "NodeDir_$parentHash"
-        } else {
-            "NodeFolder"
+    # Build directory structure XML as a properly nested tree
+    function Build-DirectoryTree {
+        param(
+            [string]$ParentPath,
+            [string]$ParentId,
+            [hashtable]$AllDirs,
+            [int]$Indent
+        )
+
+        $xml = ""
+        $indentStr = "    " * $Indent
+
+        # Find immediate children of this parent
+        $children = $AllDirs.Keys | Where-Object {
+            $parent = Split-Path -Parent $_
+            $parent -eq $ParentPath
+        } | Sort-Object
+
+        foreach ($childPath in $children) {
+            $dirId = $AllDirs[$childPath]
+            $dirName = Split-Path -Leaf $childPath
+
+            # Check if this directory has children
+            $hasChildren = $AllDirs.Keys | Where-Object {
+                (Split-Path -Parent $_) -eq $childPath
+            }
+
+            if ($hasChildren) {
+                $xml += "$indentStr<Directory Id=`"$dirId`" Name=`"$dirName`">`n"
+                $xml += Build-DirectoryTree -ParentPath $childPath -ParentId $dirId -AllDirs $AllDirs -Indent ($Indent + 1)
+                $xml += "$indentStr</Directory>`n"
+            } else {
+                $xml += "$indentStr<Directory Id=`"$dirId`" Name=`"$dirName`" />`n"
+            }
         }
-        $dirXml += "    <Directory Id=`"$dirId`" Name=`"$dirName`" />`n"
+
+        return $xml
     }
+
+    $dirXml = Build-DirectoryTree -ParentPath "" -ParentId "NodeFolder" -AllDirs $directories -Indent 2
 
     # Build components XML - iterate directly
     $componentGroupXml = ""

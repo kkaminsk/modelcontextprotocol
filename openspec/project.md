@@ -48,8 +48,8 @@ modelcontextprotocol/
 
 ```json
 {
-  "@modelcontextprotocol/sdk": "^1.0.1",
-  "axios": "^1.6.2",
+  "@modelcontextprotocol/sdk": "^1.25.3",
+  "axios": "^1.13.2",
   "dotenv": "^16.3.1"
 }
 ```

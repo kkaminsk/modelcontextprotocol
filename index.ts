@@ -7,6 +7,107 @@ import {
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+// Import shared utilities and types from utils module
+import {
+  DEFAULT_TIMEOUT_MS,
+  MAX_DOMAIN_FILTERS,
+  MAX_BATCH_QUERIES,
+  DEFAULT_MODEL,
+  buildCommonOptions,
+  formatSearchResults,
+  formatMultiQueryResults,
+  type PerplexitySearchResult,
+  type PerplexitySearchResponse,
+  type PerplexityImage,
+  type PerplexityChatMessage,
+  type PerplexityChatChoice,
+  type PerplexityChatResponse,
+  type PerplexityAsyncStatusResponse,
+  type PerplexitySearchRequestBody,
+  type CommonOptions,
+} from "./utils.js";
+
+// Read version from package.json with fallback for test environments
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+let PACKAGE_VERSION: string = "0.0.0";
+try {
+  // Try reading from parent directory (for compiled dist/index.js)
+  const packageJson = JSON.parse(
+    readFileSync(join(__dirname, "..", "package.json"), "utf-8")
+  );
+  PACKAGE_VERSION = packageJson.version;
+} catch {
+  try {
+    // Try reading from same directory (for source index.ts in tests)
+    const packageJson = JSON.parse(
+      readFileSync(join(__dirname, "package.json"), "utf-8")
+    );
+    PACKAGE_VERSION = packageJson.version;
+  } catch {
+    // Fallback version if package.json cannot be read
+    PACKAGE_VERSION = "0.0.0";
+  }
+}
+
+// Utility Functions
+
+/**
+ * Performs a fetch request with timeout and standardized error handling.
+ * Consolidates AbortController setup, timeout handling, and error wrapping.
+ *
+ * @param {string} url - The URL to fetch.
+ * @param {RequestInit} options - Fetch options (method, headers, body, etc.).
+ * @param {string} apiName - Name of the API for error messages.
+ * @returns {Promise<Response>} The fetch response.
+ * @throws Will throw an error on timeout, network failure, or HTTP error.
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  apiName: string = "Perplexity API"
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timeout: ${apiName} did not respond within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
+    }
+    throw new Error(`Network error while calling ${apiName}: ${error}`);
+  }
+
+  if (!response.ok) {
+    let errorText: string;
+    try {
+      errorText = await response.text();
+    } catch {
+      errorText = "Unable to parse error response";
+    }
+    throw new Error(
+      `${apiName} error: ${response.status} ${response.statusText}\n${errorText}`
+    );
+  }
+
+  return response;
+}
 
 /**
  * Definition of the Perplexity Ask Tool.
@@ -478,9 +579,9 @@ if (!PERPLEXITY_API_KEY) {
   process.exit(1);
 }
 
-// Configure timeout for API requests (default: 5 minutes)
+// Configure timeout for API requests (default: DEFAULT_TIMEOUT_MS = 5 minutes)
 // Can be overridden via PERPLEXITY_TIMEOUT_MS environment variable
-const TIMEOUT_MS = parseInt(process.env.PERPLEXITY_TIMEOUT_MS || "300000", 10);
+const TIMEOUT_MS = parseInt(process.env.PERPLEXITY_TIMEOUT_MS || String(DEFAULT_TIMEOUT_MS), 10);
 
 /**
  * Performs a chat completion by sending a request to the Perplexity API.
@@ -506,7 +607,7 @@ const TIMEOUT_MS = parseInt(process.env.PERPLEXITY_TIMEOUT_MS || "300000", 10);
  */
 async function performChatCompletion(
   messages: Array<{ role: string; content: string }>,
-  model: string = "sonar-pro",
+  model: string = DEFAULT_MODEL,
   options?: {
     reasoning_effort?: "low" | "medium" | "high";
     search_domain_filter?: string[];
@@ -538,8 +639,8 @@ async function performChatCompletion(
 
   // Add search_domain_filter if provided
   if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
-    if (options.search_domain_filter.length > 20) {
-      throw new Error("search_domain_filter cannot exceed 20 domains");
+    if (options.search_domain_filter.length > MAX_DOMAIN_FILTERS) {
+      throw new Error(`search_domain_filter cannot exceed ${MAX_DOMAIN_FILTERS} domains`);
     }
     body.search_domain_filter = options.search_domain_filter;
   }
@@ -600,44 +701,14 @@ async function performChatCompletion(
     body.return_related_questions = true;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request timeout: Perplexity API did not respond within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
-    }
-    throw new Error(`Network error while calling Perplexity API: ${error}`);
-  }
-
-  // Check for non-successful HTTP status
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (parseError) {
-      errorText = "Unable to parse error response";
-    }
-    throw new Error(
-      `Perplexity API error: ${response.status} ${response.statusText}\n${errorText}`
-    );
-  }
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "POST", body: JSON.stringify(body) },
+    "Perplexity API"
+  );
 
   // Attempt to parse the JSON response from the API
-  let data;
+  let data: PerplexityChatResponse;
   try {
     data = await response.json();
   } catch (jsonError) {
@@ -648,7 +719,7 @@ async function performChatCompletion(
   let messageContent = data.choices[0].message.content;
 
   // If citations are provided, append them to the message content
-  if (data.citations && Array.isArray(data.citations) && data.citations.length > 0) {
+  if (data.citations && data.citations.length > 0) {
     messageContent += "\n\nCitations:\n";
     data.citations.forEach((citation: string, index: number) => {
       messageContent += `[${index + 1}] ${citation}\n`;
@@ -656,15 +727,15 @@ async function performChatCompletion(
   }
 
   // If images are provided, append them to the message content
-  if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+  if (data.images && data.images.length > 0) {
     messageContent += "\n\nImages:\n";
-    data.images.forEach((img: { url: string; origin_url: string; height: number; width: number }, index: number) => {
+    data.images.forEach((img: PerplexityImage, index: number) => {
       messageContent += `[${index + 1}] ${img.url} (${img.width}x${img.height}) - Source: ${img.origin_url}\n`;
     });
   }
 
   // If related questions are provided, append them to the message content
-  if (data.related_questions && Array.isArray(data.related_questions) && data.related_questions.length > 0) {
+  if (data.related_questions && data.related_questions.length > 0) {
     messageContent += "\n\nRelated Questions:\n";
     data.related_questions.forEach((question: string, index: number) => {
       messageContent += `${index + 1}. ${question}\n`;
@@ -686,7 +757,7 @@ async function performChatCompletion(
  */
 async function performStreamingChatCompletion(
   messages: Array<{ role: string; content: string }>,
-  model: string = "sonar-pro",
+  model: string = DEFAULT_MODEL,
   options?: {
     search_domain_filter?: string[];
     temperature?: number;
@@ -712,8 +783,8 @@ async function performStreamingChatCompletion(
 
   // Add search_domain_filter if provided
   if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
-    if (options.search_domain_filter.length > 20) {
-      throw new Error("search_domain_filter cannot exceed 20 domains");
+    if (options.search_domain_filter.length > MAX_DOMAIN_FILTERS) {
+      throw new Error(`search_domain_filter cannot exceed ${MAX_DOMAIN_FILTERS} domains`);
     }
     body.search_domain_filter = options.search_domain_filter;
   }
@@ -774,40 +845,11 @@ async function performStreamingChatCompletion(
     body.return_related_questions = true;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request timeout: Perplexity API did not respond within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
-    }
-    throw new Error(`Network error while calling Perplexity API: ${error}`);
-  }
-
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (parseError) {
-      errorText = "Unable to parse error response";
-    }
-    throw new Error(
-      `Perplexity API error: ${response.status} ${response.statusText}\n${errorText}`
-    );
-  }
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "POST", body: JSON.stringify(body) },
+    "Perplexity API"
+  );
 
   // Read the streaming response
   const reader = response.body?.getReader();
@@ -856,8 +898,9 @@ async function performStreamingChatCompletion(
             if (parsed.related_questions && Array.isArray(parsed.related_questions)) {
               relatedQuestions = parsed.related_questions;
             }
-          } catch {
-            // Skip invalid JSON lines
+          } catch (parseError) {
+            // Log invalid JSON for debugging but continue processing
+            console.error(`[Stream] Failed to parse SSE data: ${data.substring(0, 100)}`, parseError);
           }
         }
       }
@@ -894,73 +937,6 @@ async function performStreamingChatCompletion(
 }
 
 /**
- * Formats search results from the Perplexity Search API into a readable string.
- *
- * @param {any} data - The search response data from the API.
- * @returns {string} Formatted search results.
- */
-function formatSearchResults(data: any): string {
-  if (!data.results || !Array.isArray(data.results)) {
-    return "No search results found.";
-  }
-
-  let formattedResults = `Found ${data.results.length} search results:\n\n`;
-  
-  data.results.forEach((result: any, index: number) => {
-    formattedResults += `${index + 1}. **${result.title}**\n`;
-    formattedResults += `   URL: ${result.url}\n`;
-    if (result.snippet) {
-      formattedResults += `   ${result.snippet}\n`;
-    }
-    if (result.date) {
-      formattedResults += `   Date: ${result.date}\n`;
-    }
-    formattedResults += `\n`;
-  });
-
-  return formattedResults;
-}
-
-/**
- * Formats multi-query search results into a readable string.
- *
- * @param {Array<{query: string, data: any, error: string | null}>} results - The search results per query.
- * @returns {string} Formatted multi-query search results.
- */
-function formatMultiQueryResults(
-  results: Array<{ query: string; data: any; error: string | null }>
-): string {
-  const sections = results.map((result, queryIndex) => {
-    const header = `## Query ${queryIndex + 1}: "${result.query}"\n`;
-
-    if (result.error) {
-      return header + `\n**Error:** ${result.error}\n`;
-    }
-
-    if (!result.data?.results || !Array.isArray(result.data.results)) {
-      return header + `\nNo search results found.\n`;
-    }
-
-    let formattedResults = `\nFound ${result.data.results.length} results:\n\n`;
-    result.data.results.forEach((r: any, index: number) => {
-      formattedResults += `${index + 1}. **${r.title}**\n`;
-      formattedResults += `   URL: ${r.url}\n`;
-      if (r.snippet) {
-        formattedResults += `   ${r.snippet}\n`;
-      }
-      if (r.date) {
-        formattedResults += `   Date: ${r.date}\n`;
-      }
-      formattedResults += `\n`;
-    });
-
-    return header + formattedResults;
-  });
-
-  return sections.join("\n---\n\n");
-}
-
-/**
  * Performs a single web search using the Perplexity Search API.
  *
  * @param {string} query - The search query string.
@@ -969,7 +945,7 @@ function formatMultiQueryResults(
  * @param {string} country - Optional ISO country code for regional results.
  * @param {string[]} searchDomainFilter - Domain filter list for search results.
  * @param {object} dateFilters - Optional date filtering parameters.
- * @returns {Promise<any>} The raw search results data.
+ * @returns {Promise<PerplexitySearchResponse>} The raw search results data.
  * @throws Will throw an error if the API request fails.
  */
 async function performSingleSearch(
@@ -985,9 +961,9 @@ async function performSingleSearch(
     last_updated_after?: string;
     last_updated_before?: string;
   }
-): Promise<any> {
+): Promise<PerplexitySearchResponse> {
   const url = new URL("https://api.perplexity.ai/search");
-  const body: any = {
+  const body: PerplexitySearchRequestBody = {
     query: query,
     max_results: maxResults,
     max_tokens_per_page: maxTokensPerPage,
@@ -998,8 +974,8 @@ async function performSingleSearch(
   }
 
   if (searchDomainFilter && searchDomainFilter.length > 0) {
-    if (searchDomainFilter.length > 20) {
-      throw new Error("search_domain_filter cannot exceed 20 domains");
+    if (searchDomainFilter.length > MAX_DOMAIN_FILTERS) {
+      throw new Error(`search_domain_filter cannot exceed ${MAX_DOMAIN_FILTERS} domains`);
     }
     body.search_domain_filter = searchDomainFilter;
   }
@@ -1021,43 +997,13 @@ async function performSingleSearch(
     body.last_updated_before = dateFilters.last_updated_before;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "POST", body: JSON.stringify(body) },
+    "Perplexity Search API"
+  );
 
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request timeout: Perplexity Search API did not respond within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
-    }
-    throw new Error(`Network error while calling Perplexity Search API: ${error}`);
-  }
-
-  // Check for non-successful HTTP status
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (parseError) {
-      errorText = "Unable to parse error response";
-    }
-    throw new Error(
-      `Perplexity Search API error: ${response.status} ${response.statusText}\n${errorText}`
-    );
-  }
-
-  let data;
+  let data: PerplexitySearchResponse;
   try {
     data = await response.json();
   } catch (jsonError) {
@@ -1099,8 +1045,8 @@ async function performSearch(
   if (queries.length === 0) {
     throw new Error("At least one query is required");
   }
-  if (queries.length > 5) {
-    throw new Error("Maximum 5 queries per request");
+  if (queries.length > MAX_BATCH_QUERIES) {
+    throw new Error(`Maximum ${MAX_BATCH_QUERIES} queries per request`);
   }
 
   // Single query - return simple format
@@ -1167,48 +1113,19 @@ async function startAsyncResearch(
   }
 
   if (options?.search_domain_filter && options.search_domain_filter.length > 0) {
-    if (options.search_domain_filter.length > 20) {
-      throw new Error("search_domain_filter cannot exceed 20 domains");
+    if (options.search_domain_filter.length > MAX_DOMAIN_FILTERS) {
+      throw new Error(`search_domain_filter cannot exceed ${MAX_DOMAIN_FILTERS} domains`);
     }
     body.search_domain_filter = options.search_domain_filter;
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "POST", body: JSON.stringify(body) },
+    "Perplexity Async API"
+  );
 
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request timeout: Perplexity Async API did not respond within ${TIMEOUT_MS}ms.`);
-    }
-    throw new Error(`Network error while calling Perplexity Async API: ${error}`);
-  }
-
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (parseError) {
-      errorText = "Unable to parse error response";
-    }
-    throw new Error(
-      `Perplexity Async API error: ${response.status} ${response.statusText}\n${errorText}`
-    );
-  }
-
-  let data;
+  let data: { request_id: string; status?: string };
   try {
     data = await response.json();
   } catch (jsonError) {
@@ -1240,40 +1157,13 @@ async function getAsyncResearchStatus(
 }> {
   const url = new URL(`https://api.perplexity.ai/async/chat/completions/${requestId}`);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const response = await fetchWithTimeout(
+    url.toString(),
+    { method: "GET" },
+    "Perplexity Async API"
+  );
 
-  let response;
-  try {
-    response = await fetch(url.toString(), {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Request timeout: Perplexity Async API did not respond within ${TIMEOUT_MS}ms.`);
-    }
-    throw new Error(`Network error while calling Perplexity Async API: ${error}`);
-  }
-
-  if (!response.ok) {
-    let errorText;
-    try {
-      errorText = await response.text();
-    } catch (parseError) {
-      errorText = "Unable to parse error response";
-    }
-    throw new Error(
-      `Perplexity Async API error: ${response.status} ${response.statusText}\n${errorText}`
-    );
-  }
-
-  let data;
+  let data: PerplexityAsyncStatusResponse;
   try {
     data = await response.json();
   } catch (jsonError) {
@@ -1299,7 +1189,7 @@ async function getAsyncResearchStatus(
   // Format completed results with citations
   if (data.status === "completed" && data.choices && data.choices[0]) {
     let messageContent = data.choices[0].message.content;
-    if (data.citations && Array.isArray(data.citations) && data.citations.length > 0) {
+    if (data.citations && data.citations.length > 0) {
       messageContent += "\n\nCitations:\n";
       data.citations.forEach((citation: string, index: number) => {
         messageContent += `[${index + 1}] ${citation}\n`;
@@ -1314,8 +1204,8 @@ async function getAsyncResearchStatus(
 // Initialize the server with tool metadata and capabilities
 const server = new Server(
   {
-    name: "example-servers/perplexity-ask",
-    version: "0.1.0",
+    name: "@perplexity-ai/mcp-server",
+    version: PACKAGE_VERSION,
   },
   {
     capabilities: {
@@ -1357,34 +1247,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_ask: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages
         const messages = args.messages;
-        // Determine model: default to sonar-pro if not specified or invalid
         const model = typeof args.model === "string" && ["sonar", "sonar-pro"].includes(args.model)
           ? args.model
-          : "sonar-pro";
+          : DEFAULT_MODEL;
         const useStreaming = args.stream === true;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
-        }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        if (args.return_images === true) options.return_images = true;
-        if (args.return_related_questions === true) options.return_related_questions = true;
+        const options = buildCommonOptions(args);
         const result = useStreaming
           ? await performStreamingChatCompletion(
               messages,
@@ -1405,34 +1273,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_research: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages using the deep research model
         const messages = args.messages;
         const reasoningEffort = typeof args.reasoning_effort === "string" &&
           ["low", "medium", "high"].includes(args.reasoning_effort)
           ? (args.reasoning_effort as "low" | "medium" | "high")
           : undefined;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
+        const commonOptions = buildCommonOptions(args);
+        const options: Record<string, unknown> = { ...commonOptions };
         if (reasoningEffort) options.reasoning_effort = reasoningEffort;
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
-        }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        if (args.return_images === true) options.return_images = true;
-        if (args.return_related_questions === true) options.return_related_questions = true;
         const result = await performChatCompletion(
           messages,
           "sonar-deep-research",
@@ -1447,28 +1295,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_reason: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages using the reasoning model
         const messages = args.messages;
         const useStreaming = args.stream === true;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
-        }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        const options = buildCommonOptions(args);
         const result = useStreaming
           ? await performStreamingChatCompletion(
               messages,
@@ -1493,8 +1322,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error("Invalid arguments for perplexity_search: 'query' must be a string or array of strings");
         }
         // Validate array length if array
-        if (Array.isArray(args.query) && args.query.length > 5) {
-          throw new Error("Invalid arguments for perplexity_search: maximum 5 queries allowed");
+        if (Array.isArray(args.query) && args.query.length > MAX_BATCH_QUERIES) {
+          throw new Error(`Invalid arguments for perplexity_search: maximum ${MAX_BATCH_QUERIES} queries allowed`);
         }
         const query = args.query as string | string[];
         const { max_results, max_tokens_per_page, country } = args;

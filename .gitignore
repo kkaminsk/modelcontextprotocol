@@ -50,4 +50,10 @@ Desktop.ini
 *.csv
 *.tsv
 *.jsonl
-:
+
+# Installer build artifacts
+installer/build/
+installer/node/
+*.msi
+*.wixobj
+*.wixpdb

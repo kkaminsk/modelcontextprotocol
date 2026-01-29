@@ -35,18 +35,23 @@
     "build:installer": "powershell -ExecutionPolicy Bypass -File installer/Build-Installer.ps1",
     "build:installer:clean": "powershell -ExecutionPolicy Bypass -File installer/Build-Installer.ps1 -Clean",
     "prepare": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.3",
-    "axios": "^1.13.2",
-    "dotenv": "^16.3.1",
-    "openspec": "^0.0.0"
+    "@modelcontextprotocol/sdk": "^1.25.3"
   },
   "devDependencies": {
     "@types/node": "^22.19.7",
+    "@vitest/coverage-v8": "^3.2.4",
+    "axios": "^1.13.2",
+    "dotenv": "^16.3.1",
+    "openspec": "^0.0.0",
     "shx": "^0.4.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=18"

@@ -17,7 +17,28 @@
       "Bash(git push)",
       "Bash(npm audit fix:*)",
       "Bash(git commit:*)",
-      "mcp__perplexity__perplexity_reason"
+      "mcp__perplexity__perplexity_reason",
+      "Bash(openspec list:*)",
+      "Bash(openspec validate:*)",
+      "Bash(openspec show:*)",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\Temp\\\\tsscat\\\\modelcontextprotocol\\\\graphics\\\\perplexity*.png'' | Select-Object Name, Length | Format-Table -AutoSize\")",
+      "Bash(npm outdated:*)",
+      "Bash(npm view:*)",
+      "WebFetch(domain:github.com)",
+      "Skill(openspec:apply)",
+      "Bash(timeout 3 node:*)",
+      "Bash(PERPLEXITY_API_KEY=test-key timeout 2 node:*)",
+      "Bash(git reset:*)",
+      "Bash(if [ -n \"$PERPLEXITY_API_KEY\" ])",
+      "Bash(then echo \"API key is set\")",
+      "Bash(else echo \"API key is NOT set\")",
+      "Bash(fi)",
+      "Bash(dir:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run build:installer:*)",
+      "Bash(git -C \"C:\\\\Temp\\\\tsscat\\\\modelcontextprotocol\" log --oneline -15)",
+      "Bash(git -C \"C:\\\\Temp\\\\tsscat\\\\modelcontextprotocol\" branch -a)",
+      "Bash(npm test)"
     ]
   }
 }

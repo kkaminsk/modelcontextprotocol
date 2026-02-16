@@ -49,6 +49,15 @@ export function buildChatBody(
   if (options?.last_updated_before) body.last_updated_before = options.last_updated_before;
   if (options?.return_images) body.return_images = true;
   if (options?.return_related_questions) body.return_related_questions = true;
+  if (options?.search_context_size) body.search_context_size = options.search_context_size;
+  if (options?.output_level) body.output_level = options.output_level;
+  if (options?.search_language_filter && options.search_language_filter.length > 0) {
+    body.search_language_filter = options.search_language_filter;
+  }
+  if (options?.enable_search_classifier !== undefined) body.enable_search_classifier = options.enable_search_classifier;
+  if (options?.disable_search) body.disable_search = true;
+  if (options?.search_type) body.search_type = options.search_type;
+  if (options?.response_format) body.response_format = options.response_format;
 
   return body;
 }
@@ -56,7 +65,7 @@ export function buildChatBody(
 /**
  * Format citations, images, and related questions onto message content.
  */
-export function appendExtras(content: string, data: { citations?: string[]; images?: Array<{ url: string; origin_url: string; height: number; width: number }>; related_questions?: string[] }): string {
+export function appendExtras(content: string, data: { citations?: string[]; images?: Array<{ url: string; origin_url: string; height: number; width: number }>; related_questions?: string[]; search_results?: Array<{ title: string; url: string; snippet?: string; date?: string }> }): string {
   let result = content;
 
   if (data.citations && data.citations.length > 0) {
@@ -77,6 +86,16 @@ export function appendExtras(content: string, data: { citations?: string[]; imag
     result += "\n\nRelated Questions:\n";
     data.related_questions.forEach((question, index) => {
       result += `${index + 1}. ${question}\n`;
+    });
+  }
+
+  if (data.search_results && data.search_results.length > 0) {
+    result += "\n\nSearch Results:\n";
+    data.search_results.forEach((sr, index) => {
+      result += `[${index + 1}] ${sr.title} — ${sr.url}`;
+      if (sr.date) result += ` (${sr.date})`;
+      if (sr.snippet) result += `\n    ${sr.snippet}`;
+      result += "\n";
     });
   }
 
@@ -173,7 +192,12 @@ export async function performChatCompletion(
   }
 
   const data = await parseResponse<PerplexityChatResponse>(response);
-  return appendExtras(data.choices[0].message.content, data);
+  return appendExtras(data.choices[0].message.content, {
+    citations: data.citations,
+    images: data.images,
+    related_questions: data.related_questions,
+    search_results: data.search_results,
+  });
 }
 
 /**
@@ -229,6 +253,7 @@ export async function performStreamingChatCompletion(
   let citations: string[] = [];
   let images: Array<{ url: string; origin_url: string; height: number; width: number }> = [];
   let relatedQuestions: string[] = [];
+  let searchResults: Array<{ title: string; url: string; snippet?: string; date?: string }> = [];
 
   const resetStreamTimeout = () => {
     clearTimeout(timeoutId);
@@ -258,6 +283,7 @@ export async function performStreamingChatCompletion(
             if (parsed.citations && Array.isArray(parsed.citations)) citations = parsed.citations;
             if (parsed.images && Array.isArray(parsed.images)) images = parsed.images;
             if (parsed.related_questions && Array.isArray(parsed.related_questions)) relatedQuestions = parsed.related_questions;
+            if (parsed.search_results && Array.isArray(parsed.search_results)) searchResults = parsed.search_results;
           } catch { /* skip invalid JSON */ }
         }
       }
@@ -273,7 +299,7 @@ export async function performStreamingChatCompletion(
     reader.releaseLock();
   }
 
-  return appendExtras(fullContent, { citations, images, related_questions: relatedQuestions });
+  return appendExtras(fullContent, { citations, images, related_questions: relatedQuestions, search_results: searchResults });
 }
 
 /**
@@ -287,7 +313,9 @@ export async function performSingleSearch(
   maxTokensPerPage: number = 1024,
   country?: string,
   searchDomainFilter?: string[],
-  dateFilters?: DateFilters
+  dateFilters?: DateFilters,
+  searchLanguageFilter?: string[],
+  userLocation?: Record<string, unknown>
 ): Promise<PerplexitySearchResponse> {
   const body: Record<string, unknown> = {
     query,
@@ -307,6 +335,8 @@ export async function performSingleSearch(
   if (dateFilters?.search_before_date) body.search_before_date_filter = dateFilters.search_before_date;
   if (dateFilters?.last_updated_after) body.last_updated_after = dateFilters.last_updated_after;
   if (dateFilters?.last_updated_before) body.last_updated_before = dateFilters.last_updated_before;
+  if (searchLanguageFilter && searchLanguageFilter.length > 0) body.search_language_filter = searchLanguageFilter;
+  if (userLocation) body.user_location = userLocation;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -345,7 +375,9 @@ export async function performSearch(
   maxTokensPerPage?: number,
   country?: string,
   searchDomainFilter?: string[],
-  dateFilters?: DateFilters
+  dateFilters?: DateFilters,
+  searchLanguageFilter?: string[],
+  userLocation?: Record<string, unknown>
 ): Promise<string> {
   const queries = Array.isArray(query) ? query : [query];
 
@@ -353,14 +385,14 @@ export async function performSearch(
   if (queries.length > 5) throw new Error("Maximum 5 queries per request");
 
   if (queries.length === 1) {
-    const data = await performSingleSearch(queries[0], apiKey, timeoutMs, maxResults, maxTokensPerPage, country, searchDomainFilter, dateFilters);
+    const data = await performSingleSearch(queries[0], apiKey, timeoutMs, maxResults, maxTokensPerPage, country, searchDomainFilter, dateFilters, searchLanguageFilter, userLocation);
     return formatSearchResults(data);
   }
 
   const results = await Promise.all(
     queries.map(async (q) => {
       try {
-        const data = await performSingleSearch(q, apiKey, timeoutMs, maxResults, maxTokensPerPage, country, searchDomainFilter, dateFilters);
+        const data = await performSingleSearch(q, apiKey, timeoutMs, maxResults, maxTokensPerPage, country, searchDomainFilter, dateFilters, searchLanguageFilter, userLocation);
         return { query: q, data, error: null };
       } catch (error) {
         return { query: q, data: null, error: error instanceof Error ? error.message : String(error) };

@@ -15,6 +15,8 @@ import {
   handlePerplexityResearchAsync,
   handlePerplexityResearchStatus,
 } from "./tools/perplexity_research_async.js";
+import { PERPLEXITY_AGENT_TOOL, handlePerplexityAgent } from "./tools/perplexity_agent.js";
+import { PERPLEXITY_EMBED_TOOL, handlePerplexityEmbed } from "./tools/perplexity_embed.js";
 
 export function createServer(apiKey: string, timeoutMs: number): Server {
   const server = new Server(
@@ -30,6 +32,8 @@ export function createServer(apiKey: string, timeoutMs: number): Server {
       PERPLEXITY_SEARCH_TOOL,
       PERPLEXITY_RESEARCH_ASYNC_TOOL,
       PERPLEXITY_RESEARCH_STATUS_TOOL,
+      PERPLEXITY_AGENT_TOOL,
+      PERPLEXITY_EMBED_TOOL,
     ],
   }));
 
@@ -51,6 +55,10 @@ export function createServer(apiKey: string, timeoutMs: number): Server {
           return await handlePerplexityResearchAsync(args as Record<string, unknown>, apiKey, timeoutMs);
         case "perplexity_research_status":
           return await handlePerplexityResearchStatus(args as Record<string, unknown>, apiKey, timeoutMs);
+        case "perplexity_agent":
+          return await handlePerplexityAgent(args as Record<string, unknown>, apiKey, timeoutMs);
+        case "perplexity_embed":
+          return await handlePerplexityEmbed(args as Record<string, unknown>, apiKey, timeoutMs);
         default:
           return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
       }

@@ -26,6 +26,18 @@ export const PERPLEXITY_SEARCH_TOOL: Tool = {
       search_before_date: { type: "string", pattern: "^\\d{2}/\\d{2}/\\d{4}$", description: "Only results before this date. Format: MM/DD/YYYY" },
       last_updated_after: { type: "string", pattern: "^\\d{2}/\\d{2}/\\d{4}$", description: "Only results updated after. Format: MM/DD/YYYY" },
       last_updated_before: { type: "string", pattern: "^\\d{2}/\\d{2}/\\d{4}$", description: "Only results updated before. Format: MM/DD/YYYY" },
+      search_language_filter: { type: "array", items: { type: "string" }, maxItems: 10, description: "ISO 639-1 language codes to filter results (max 10)" },
+      user_location: {
+        type: "object",
+        properties: {
+          latitude: { type: "number", description: "Latitude" },
+          longitude: { type: "number", description: "Longitude" },
+          country: { type: "string", description: "Country code" },
+          city: { type: "string", description: "City name" },
+          region: { type: "string", description: "Region/state" },
+        },
+        description: "User location for localized results",
+      },
     },
     required: ["query"],
   },
@@ -58,9 +70,18 @@ export async function handlePerplexitySearch(args: Record<string, unknown>, apiK
   if (typeof args.last_updated_after === "string") dateFilters.last_updated_after = args.last_updated_after;
   if (typeof args.last_updated_before === "string") dateFilters.last_updated_before = args.last_updated_before;
 
+  const searchLangFilter = Array.isArray(args.search_language_filter)
+    ? args.search_language_filter.filter((l): l is string => typeof l === "string")
+    : undefined;
+  const userLocation = args.user_location && typeof args.user_location === "object"
+    ? args.user_location as Record<string, unknown>
+    : undefined;
+
   const result = await performSearch(
     query, apiKey, timeoutMs, maxResults, maxTokensPerPage, countryCode, searchDomainFilter,
-    Object.keys(dateFilters).length > 0 ? dateFilters : undefined
+    Object.keys(dateFilters).length > 0 ? dateFilters : undefined,
+    searchLangFilter,
+    userLocation
   );
   return { content: [{ type: "text", text: result }], isError: false };
 }

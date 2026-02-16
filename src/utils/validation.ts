@@ -50,5 +50,29 @@ export function buildCommonOptions(args: Record<string, unknown>): CommonOptions
     options.reasoning_effort = args.reasoning_effort as CommonOptions["reasoning_effort"];
   }
 
+  if (typeof args.search_context_size === "string" && ["minimal", "low", "medium", "high"].includes(args.search_context_size)) {
+    options.search_context_size = args.search_context_size as CommonOptions["search_context_size"];
+  }
+  if (typeof args.output_level === "string" && ["full", "concise"].includes(args.output_level)) {
+    options.output_level = args.output_level as CommonOptions["output_level"];
+  }
+  const searchLangFilter = Array.isArray(args.search_language_filter)
+    ? args.search_language_filter.filter((l): l is string => typeof l === "string")
+    : undefined;
+  if (searchLangFilter && searchLangFilter.length > 0) {
+    if (searchLangFilter.length > 10) throw new Error("search_language_filter cannot exceed 10 languages");
+    options.search_language_filter = searchLangFilter;
+  }
+  if (args.enable_search_classifier === true || args.enable_search_classifier === false) {
+    options.enable_search_classifier = args.enable_search_classifier;
+  }
+  if (args.disable_search === true) options.disable_search = true;
+  if (typeof args.search_type === "string" && ["fast", "pro"].includes(args.search_type)) {
+    options.search_type = args.search_type as CommonOptions["search_type"];
+  }
+  if (args.response_format && typeof args.response_format === "object") {
+    options.response_format = args.response_format as Record<string, unknown>;
+  }
+
   return options;
 }

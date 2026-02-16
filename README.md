@@ -54,6 +54,34 @@ Start an async deep research job for complex queries that may take several minut
 
 Returns a `request_id` to poll with `perplexity_research_status`.
 
+### perplexity_agent
+Access the Perplexity Agent API — the primary recommended API with multi-provider models and advanced capabilities.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `query` | string | **Required.** The user query/prompt |
+| `model` | string | Model (e.g., `anthropic/claude-opus-4-6`, `openai/gpt-5.2`, `google/gemini-2.5-pro`) |
+| `models` | array | Fallback model chain (up to 5 models) |
+| `preset` | string | `fast-search`, `pro-search`, `deep-research`, `advanced-deep-research` |
+| `system` | string | System prompt |
+| `instructions` | string | Additional instructions |
+| `language` | string | Response language (ISO 639-1) |
+| `max_steps` | integer | Multi-step reasoning steps (1-10) |
+| `reasoning` | object | Reasoning config with `effort` (low/medium/high) |
+| `tools` | array | Built-in tools config (web_search, fetch_url, custom) |
+| `response_format` | object | Structured JSON output schema |
+| `stream` | boolean | Enable streaming (default: false) |
+
+### perplexity_embed
+Generate text embeddings using the Perplexity Embeddings API.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `input` | string or array | **Required.** Text(s) to embed (max 512 for batch) |
+| `model` | string | `pplx-embed-v1-0.6b`, `pplx-embed-v1-4b`, `pplx-embed-context-v1-0.6b`, `pplx-embed-context-v1-4b` |
+| `dimensions` | integer | Output dimensions (Matryoshka reduction) |
+| `encoding_format` | string | `float`, `base64_int8`, `base64_binary` |
+
 ### perplexity_research_status
 Check status and retrieve results from an async research job.
 
@@ -80,6 +108,13 @@ The following parameters are available on `perplexity_ask`, `perplexity_research
 |-----------|------|-------------|
 | `search_domain_filter` | array | Domain list (max 20). Prefix with `-` to exclude |
 | `search_mode` | string | `web` (default), `academic`, or `sec` (SEC filings) |
+| `search_context_size` | string | `minimal`, `low`, `medium`, `high` — amount of search context |
+| `output_level` | string | `full` or `concise` — response detail level |
+| `search_language_filter` | array | ISO 639-1 codes (max 10) to filter search results |
+| `enable_search_classifier` | boolean | Enable/disable search classifier |
+| `disable_search` | boolean | Disable web search entirely |
+| `search_type` | string | `fast` or `pro` (multi-step Pro Search reasoning) |
+| `response_format` | object | Structured JSON output schema |
 
 ### Date Filters
 
@@ -91,7 +126,7 @@ The following parameters are available on `perplexity_ask`, `perplexity_research
 | `last_updated_after` | string | Only results updated after date (MM/DD/YYYY) |
 | `last_updated_before` | string | Only results updated before date (MM/DD/YYYY) |
 
-> **Note:** `perplexity_search` supports `search_domain_filter` and all date filters, but not generation controls or `search_mode`.
+> **Note:** `perplexity_search` supports `search_domain_filter`, all date filters, `search_language_filter`, and `user_location`, but not generation controls or `search_mode`.
 
 ## Configuration
 

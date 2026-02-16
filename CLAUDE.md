@@ -50,7 +50,9 @@ src/
 │   ├── perplexity_research.ts      — Research tool definition and handler
 │   ├── perplexity_reason.ts        — Reason tool definition and handler
 │   ├── perplexity_search.ts        — Search tool definition and handler
-│   └── perplexity_research_async.ts — Async research + status tools
+│   ├── perplexity_research_async.ts — Async research + status tools
+│   ├── perplexity_agent.ts         — Agent API tool (POST /v1/responses)
+│   └── perplexity_embed.ts         — Embeddings tool (POST /v1/embeddings)
 └── __tests__/
     ├── validation.test.ts  — Validation utility tests
     ├── api-client.test.ts  — API client/formatting tests
@@ -68,6 +70,8 @@ src/
 | `perplexity_search` | - | /search |
 | `perplexity_research_async` | sonar-deep-research | /async/chat/completions (POST) |
 | `perplexity_research_status` | - | /async/chat/completions/{id} (GET) |
+| `perplexity_agent` | multi-provider | /v1/responses |
+| `perplexity_embed` | pplx-embed-* | /v1/embeddings |
 
 ## Common Parameters
 
@@ -86,6 +90,18 @@ All chat completion tools (`perplexity_ask`, `perplexity_research`, `perplexity_
 | `search_before_date` | string | MM/DD/YYYY format |
 | `last_updated_after` | string | MM/DD/YYYY format |
 | `last_updated_before` | string | MM/DD/YYYY format |
+
+### New Sonar API Parameters (Feb 2026)
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `search_context_size` | string | `minimal`, `low`, `medium`, `high` |
+| `output_level` | string | `full` or `concise` |
+| `search_language_filter` | string[] | ISO 639-1 codes (max 10) |
+| `enable_search_classifier` | boolean | Enable/disable search classifier |
+| `disable_search` | boolean | Disable web search |
+| `search_type` | string | `fast` or `pro` |
+| `response_format` | object | Structured JSON output |
 
 ### Tool-Specific Parameters
 

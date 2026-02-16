@@ -18,6 +18,7 @@ export interface PerplexityChatResponse {
   citations?: string[];
   images?: Array<{ url: string; origin_url: string; height: number; width: number }>;
   related_questions?: string[];
+  search_results?: Array<{ title: string; url: string; snippet?: string; date?: string }>;
 }
 
 export interface PerplexitySearchResult {
@@ -56,6 +57,13 @@ export interface CommonOptions {
   last_updated_before?: string;
   return_images?: boolean;
   return_related_questions?: boolean;
+  search_context_size?: "minimal" | "low" | "medium" | "high";
+  output_level?: "full" | "concise";
+  search_language_filter?: string[];
+  enable_search_classifier?: boolean;
+  disable_search?: boolean;
+  search_type?: "fast" | "pro";
+  response_format?: Record<string, unknown>;
 }
 
 export interface DateFilters {

@@ -33,11 +33,30 @@ npm run watch    # Watch mode for development
 
 ## Architecture
 
-Single-file server implementation in `index.ts`:
-- Tool definitions (JSON schemas)
-- API request handlers (`performChatCompletion`, `performStreamingChatCompletion`, `performSearch`, `startAsyncResearch`, `getAsyncResearchStatus`)
-- MCP server setup with stdio transport
-- Request routing via `CallToolRequestSchema` handler
+Modular TypeScript architecture in `src/`:
+
+```
+src/
+├── index.ts              — Entry point, stdio transport
+├── server.ts             — MCP server config and tool registration
+├── config.ts             — Environment variables and configuration
+├── types/
+│   └── index.ts          — Shared TypeScript interfaces
+├── utils/
+│   ├── validation.ts     — Input validation (validateMessages, buildCommonOptions)
+│   └── api-client.ts     — API client (fetch, streaming, search, async research)
+├── tools/
+│   ├── perplexity_ask.ts           — Ask tool definition and handler
+│   ├── perplexity_research.ts      — Research tool definition and handler
+│   ├── perplexity_reason.ts        — Reason tool definition and handler
+│   ├── perplexity_search.ts        — Search tool definition and handler
+│   └── perplexity_research_async.ts — Async research + status tools
+└── __tests__/
+    ├── validation.test.ts  — Validation utility tests
+    ├── api-client.test.ts  — API client/formatting tests
+    ├── config.test.ts      — Configuration tests
+    └── tools.test.ts       — Tool handler tests (mocked API)
+```
 
 ## Tools Implemented
 
@@ -139,10 +158,19 @@ All API calls follow this pattern:
 
 ## Key Files
 
-- `index.ts` - All server logic (tools, handlers, API calls)
+- `src/` - All server logic (modular architecture, see above)
+- `index.ts` - Legacy single-file (kept for reference, not compiled)
 - `package.json` - Dependencies and scripts
-- `tsconfig.json` - TypeScript config (ES2015, ESNext modules)
+- `tsconfig.json` - TypeScript config (ES2015, ESNext modules, rootDir: src/)
+- `vitest.config.ts` - Test configuration
 - `openspec/project.md` - Detailed project context
+
+## Testing
+
+```bash
+npm test          # Run all tests (vitest)
+npm run test:watch # Watch mode
+```
 
 ## Testing Locally
 

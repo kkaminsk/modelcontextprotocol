@@ -471,6 +471,116 @@ const PERPLEXITY_RESEARCH_STATUS_TOOL: Tool = {
   },
 };
 
+// --- TypeScript interfaces for API responses ---
+
+interface PerplexityMessage {
+  role: string;
+  content: string;
+}
+
+interface PerplexityChatChoice {
+  message: PerplexityMessage;
+  index: number;
+  finish_reason: string;
+}
+
+interface PerplexityChatResponse {
+  choices: PerplexityChatChoice[];
+  citations?: string[];
+  images?: Array<{ url: string; origin_url: string; height: number; width: number }>;
+  related_questions?: string[];
+}
+
+interface PerplexitySearchResult {
+  title: string;
+  url: string;
+  snippet?: string;
+  date?: string;
+}
+
+interface PerplexitySearchResponse {
+  results?: PerplexitySearchResult[];
+}
+
+interface PerplexityAsyncResponse {
+  request_id: string;
+  status: string;
+  created_at?: string;
+  completed_at?: string;
+  error?: string;
+  choices?: PerplexityChatChoice[];
+  citations?: string[];
+}
+
+interface CommonOptions {
+  reasoning_effort?: "low" | "medium" | "high";
+  search_domain_filter?: string[];
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+  top_k?: number;
+  search_mode?: "web" | "academic" | "sec";
+  search_recency_filter?: "day" | "week" | "month" | "year";
+  search_after_date?: string;
+  search_before_date?: string;
+  last_updated_after?: string;
+  last_updated_before?: string;
+  return_images?: boolean;
+  return_related_questions?: boolean;
+}
+
+// --- Shared helpers ---
+
+/**
+ * Validates that each message in the array has string `role` and `content` properties.
+ */
+function validateMessages(messages: unknown[]): messages is Array<{ role: string; content: string }> {
+  return messages.every(
+    (msg) =>
+      typeof msg === "object" &&
+      msg !== null &&
+      typeof (msg as Record<string, unknown>).role === "string" &&
+      typeof (msg as Record<string, unknown>).content === "string"
+  );
+}
+
+/**
+ * Extracts and validates common options from tool call arguments.
+ * Eliminates duplication across tool handlers.
+ */
+function buildCommonOptions(args: Record<string, unknown>): CommonOptions {
+  const options: CommonOptions = {};
+
+  const searchDomainFilter = Array.isArray(args.search_domain_filter)
+    ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
+    : undefined;
+  if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+
+  if (typeof args.temperature === "number") options.temperature = args.temperature;
+  if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
+  if (typeof args.top_p === "number") options.top_p = args.top_p;
+  if (typeof args.top_k === "number") options.top_k = args.top_k;
+
+  if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
+    options.search_mode = args.search_mode as CommonOptions["search_mode"];
+  }
+  if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
+    options.search_recency_filter = args.search_recency_filter as CommonOptions["search_recency_filter"];
+  }
+  if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
+  if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
+  if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
+  if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+  if (args.return_images === true) options.return_images = true;
+  if (args.return_related_questions === true) options.return_related_questions = true;
+
+  if (typeof args.reasoning_effort === "string" && ["low", "medium", "high"].includes(args.reasoning_effort)) {
+    options.reasoning_effort = args.reasoning_effort as CommonOptions["reasoning_effort"];
+  }
+
+  return options;
+}
+
 // Retrieve the Perplexity API key from environment variables
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 if (!PERPLEXITY_API_KEY) {
@@ -524,8 +634,7 @@ async function performChatCompletion(
     return_related_questions?: boolean;
   }
 ): Promise<string> {
-  // Construct the API endpoint URL and request body
-  const url = new URL("https://api.perplexity.ai/chat/completions");
+  const url = "https://api.perplexity.ai/chat/completions";
   const body: Record<string, unknown> = {
     model: model, // Model identifier passed as parameter
     messages: messages,
@@ -605,7 +714,7 @@ async function performChatCompletion(
 
   let response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -623,7 +732,6 @@ async function performChatCompletion(
     throw new Error(`Network error while calling Perplexity API: ${error}`);
   }
 
-  // Check for non-successful HTTP status
   if (!response.ok) {
     let errorText;
     try {
@@ -636,15 +744,13 @@ async function performChatCompletion(
     );
   }
 
-  // Attempt to parse the JSON response from the API
-  let data;
+  let data: PerplexityChatResponse;
   try {
-    data = await response.json();
+    data = await response.json() as PerplexityChatResponse;
   } catch (jsonError) {
     throw new Error(`Failed to parse JSON response from Perplexity API: ${jsonError}`);
   }
 
-  // Directly retrieve the main message content from the response
   let messageContent = data.choices[0].message.content;
 
   // If citations are provided, append them to the message content
@@ -703,7 +809,7 @@ async function performStreamingChatCompletion(
     return_related_questions?: boolean;
   }
 ): Promise<string> {
-  const url = new URL("https://api.perplexity.ai/chat/completions");
+  const url = "https://api.perplexity.ai/chat/completions";
   const body: Record<string, unknown> = {
     model: model,
     messages: messages,
@@ -779,7 +885,7 @@ async function performStreamingChatCompletion(
 
   let response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -788,7 +894,7 @@ async function performStreamingChatCompletion(
       body: JSON.stringify(body),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
+    // Don't clear timeout — keep it active during stream reading
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
@@ -798,6 +904,7 @@ async function performStreamingChatCompletion(
   }
 
   if (!response.ok) {
+    clearTimeout(timeoutId);
     let errorText;
     try {
       errorText = await response.text();
@@ -809,9 +916,9 @@ async function performStreamingChatCompletion(
     );
   }
 
-  // Read the streaming response
   const reader = response.body?.getReader();
   if (!reader) {
+    clearTimeout(timeoutId);
     throw new Error("No response body available for streaming");
   }
 
@@ -822,9 +929,18 @@ async function performStreamingChatCompletion(
   let images: Array<{ url: string; origin_url: string; height: number; width: number }> = [];
   let relatedQuestions: string[] = [];
 
+  // Reset timeout on each chunk to act as inactivity timeout
+  const resetStreamTimeout = () => {
+    clearTimeout(timeoutId);
+    // Note: reuse the same controller but set a new timeout
+    return setTimeout(() => controller.abort(), TIMEOUT_MS);
+  };
+  let streamTimeoutId = resetStreamTimeout();
+
   try {
     while (true) {
       const { done, value } = await reader.read();
+      streamTimeoutId = resetStreamTimeout();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -862,7 +978,14 @@ async function performStreamingChatCompletion(
         }
       }
     }
+  } catch (error) {
+    clearTimeout(streamTimeoutId);
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Stream timeout: No data received within ${TIMEOUT_MS}ms. Consider increasing PERPLEXITY_TIMEOUT_MS.`);
+    }
+    throw error;
   } finally {
+    clearTimeout(streamTimeoutId);
     reader.releaseLock();
   }
 
@@ -899,14 +1022,14 @@ async function performStreamingChatCompletion(
  * @param {any} data - The search response data from the API.
  * @returns {string} Formatted search results.
  */
-function formatSearchResults(data: any): string {
+function formatSearchResults(data: PerplexitySearchResponse): string {
   if (!data.results || !Array.isArray(data.results)) {
     return "No search results found.";
   }
 
   let formattedResults = `Found ${data.results.length} search results:\n\n`;
   
-  data.results.forEach((result: any, index: number) => {
+  data.results.forEach((result: PerplexitySearchResult, index: number) => {
     formattedResults += `${index + 1}. **${result.title}**\n`;
     formattedResults += `   URL: ${result.url}\n`;
     if (result.snippet) {
@@ -928,7 +1051,7 @@ function formatSearchResults(data: any): string {
  * @returns {string} Formatted multi-query search results.
  */
 function formatMultiQueryResults(
-  results: Array<{ query: string; data: any; error: string | null }>
+  results: Array<{ query: string; data: PerplexitySearchResponse | null; error: string | null }>
 ): string {
   const sections = results.map((result, queryIndex) => {
     const header = `## Query ${queryIndex + 1}: "${result.query}"\n`;
@@ -942,7 +1065,7 @@ function formatMultiQueryResults(
     }
 
     let formattedResults = `\nFound ${result.data.results.length} results:\n\n`;
-    result.data.results.forEach((r: any, index: number) => {
+    result.data.results.forEach((r: PerplexitySearchResult, index: number) => {
       formattedResults += `${index + 1}. **${r.title}**\n`;
       formattedResults += `   URL: ${r.url}\n`;
       if (r.snippet) {
@@ -985,9 +1108,9 @@ async function performSingleSearch(
     last_updated_after?: string;
     last_updated_before?: string;
   }
-): Promise<any> {
-  const url = new URL("https://api.perplexity.ai/search");
-  const body: any = {
+): Promise<PerplexitySearchResponse> {
+  const url = "https://api.perplexity.ai/search";
+  const body: Record<string, unknown> = {
     query: query,
     max_results: maxResults,
     max_tokens_per_page: maxTokensPerPage,
@@ -1026,7 +1149,7 @@ async function performSingleSearch(
 
   let response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1044,7 +1167,6 @@ async function performSingleSearch(
     throw new Error(`Network error while calling Perplexity Search API: ${error}`);
   }
 
-  // Check for non-successful HTTP status
   if (!response.ok) {
     let errorText;
     try {
@@ -1057,9 +1179,9 @@ async function performSingleSearch(
     );
   }
 
-  let data;
+  let data: PerplexitySearchResponse;
   try {
-    data = await response.json();
+    data = await response.json() as PerplexitySearchResponse;
   } catch (jsonError) {
     throw new Error(`Failed to parse JSON response from Perplexity Search API: ${jsonError}`);
   }
@@ -1156,7 +1278,7 @@ async function startAsyncResearch(
     search_domain_filter?: string[];
   }
 ): Promise<{ request_id: string; status: string }> {
-  const url = new URL("https://api.perplexity.ai/async/chat/completions");
+  const url = "https://api.perplexity.ai/async/chat/completions";
   const body: Record<string, unknown> = {
     model: "sonar-deep-research",
     messages: messages,
@@ -1178,7 +1300,7 @@ async function startAsyncResearch(
 
   let response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1208,9 +1330,9 @@ async function startAsyncResearch(
     );
   }
 
-  let data;
+  let data: PerplexityAsyncResponse;
   try {
-    data = await response.json();
+    data = await response.json() as PerplexityAsyncResponse;
   } catch (jsonError) {
     throw new Error(`Failed to parse JSON response from Perplexity Async API: ${jsonError}`);
   }
@@ -1238,14 +1360,14 @@ async function getAsyncResearchStatus(
   result?: string;
   error?: string;
 }> {
-  const url = new URL(`https://api.perplexity.ai/async/chat/completions/${requestId}`);
+  const url = `https://api.perplexity.ai/async/chat/completions/${encodeURIComponent(requestId)}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   let response;
   try {
-    response = await fetch(url.toString(), {
+    response = await fetch(url, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${PERPLEXITY_API_KEY}`,
@@ -1273,9 +1395,9 @@ async function getAsyncResearchStatus(
     );
   }
 
-  let data;
+  let data: PerplexityAsyncResponse;
   try {
-    data = await response.json();
+    data = await response.json() as PerplexityAsyncResponse;
   } catch (jsonError) {
     throw new Error(`Failed to parse JSON response from Perplexity Async API: ${jsonError}`);
   }
@@ -1289,7 +1411,7 @@ async function getAsyncResearchStatus(
     error?: string;
   } = {
     request_id: data.request_id,
-    status: data.status,
+    status: data.status as "pending" | "processing" | "completed" | "failed",
   };
 
   if (data.created_at) result.created_at = data.created_at;
@@ -1314,8 +1436,8 @@ async function getAsyncResearchStatus(
 // Initialize the server with tool metadata and capabilities
 const server = new Server(
   {
-    name: "example-servers/perplexity-ask",
-    version: "0.1.0",
+    name: "@perplexity-ai/mcp-server",
+    version: "0.2.3",
   },
   {
     capabilities: {
@@ -1357,45 +1479,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_ask: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages
-        const messages = args.messages;
-        // Determine model: default to sonar-pro if not specified or invalid
+        if (!validateMessages(args.messages)) {
+          throw new Error("Invalid message format: each message must have string 'role' and 'content' properties");
+        }
+        const messages = args.messages as Array<{ role: string; content: string }>;
         const model = typeof args.model === "string" && ["sonar", "sonar-pro"].includes(args.model)
           ? args.model
           : "sonar-pro";
         const useStreaming = args.stream === true;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
-        }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        if (args.return_images === true) options.return_images = true;
-        if (args.return_related_questions === true) options.return_related_questions = true;
+        const options = buildCommonOptions(args as Record<string, unknown>);
+        const optionsOrUndefined = Object.keys(options).length > 0 ? options : undefined;
         const result = useStreaming
-          ? await performStreamingChatCompletion(
-              messages,
-              model,
-              Object.keys(options).length > 0 ? options : undefined
-            )
-          : await performChatCompletion(
-              messages,
-              model,
-              Object.keys(options).length > 0 ? options : undefined
-            );
+          ? await performStreamingChatCompletion(messages, model, optionsOrUndefined)
+          : await performChatCompletion(messages, model, optionsOrUndefined);
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -1405,39 +1501,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_research: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages using the deep research model
-        const messages = args.messages;
-        const reasoningEffort = typeof args.reasoning_effort === "string" &&
-          ["low", "medium", "high"].includes(args.reasoning_effort)
-          ? (args.reasoning_effort as "low" | "medium" | "high")
-          : undefined;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
-        if (reasoningEffort) options.reasoning_effort = reasoningEffort;
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
+        if (!validateMessages(args.messages)) {
+          throw new Error("Invalid message format: each message must have string 'role' and 'content' properties");
         }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
-        if (args.return_images === true) options.return_images = true;
-        if (args.return_related_questions === true) options.return_related_questions = true;
-        const result = await performChatCompletion(
-          messages,
-          "sonar-deep-research",
-          Object.keys(options).length > 0 ? options : undefined
-        );
+        const messages = args.messages as Array<{ role: string; content: string }>;
+        const options = buildCommonOptions(args as Record<string, unknown>);
+        const optionsOrUndefined = Object.keys(options).length > 0 ? options : undefined;
+        const result = await performChatCompletion(messages, "sonar-deep-research", optionsOrUndefined);
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -1447,39 +1517,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_reason: 'messages' must be an array");
         }
-        // Invoke the chat completion function with the provided messages using the reasoning model
-        const messages = args.messages;
+        if (!validateMessages(args.messages)) {
+          throw new Error("Invalid message format: each message must have string 'role' and 'content' properties");
+        }
+        const messages = args.messages as Array<{ role: string; content: string }>;
         const useStreaming = args.stream === true;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
-        const options: Record<string, unknown> = {};
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
-        if (typeof args.temperature === "number") options.temperature = args.temperature;
-        if (typeof args.max_tokens === "number") options.max_tokens = args.max_tokens;
-        if (typeof args.top_p === "number") options.top_p = args.top_p;
-        if (typeof args.top_k === "number") options.top_k = args.top_k;
-        if (typeof args.search_mode === "string" && ["web", "academic", "sec"].includes(args.search_mode)) {
-          options.search_mode = args.search_mode;
-        }
-        if (typeof args.search_recency_filter === "string" && ["day", "week", "month", "year"].includes(args.search_recency_filter)) {
-          options.search_recency_filter = args.search_recency_filter;
-        }
-        if (typeof args.search_after_date === "string") options.search_after_date = args.search_after_date;
-        if (typeof args.search_before_date === "string") options.search_before_date = args.search_before_date;
-        if (typeof args.last_updated_after === "string") options.last_updated_after = args.last_updated_after;
-        if (typeof args.last_updated_before === "string") options.last_updated_before = args.last_updated_before;
+        const options = buildCommonOptions(args as Record<string, unknown>);
+        const optionsOrUndefined = Object.keys(options).length > 0 ? options : undefined;
         const result = useStreaming
-          ? await performStreamingChatCompletion(
-              messages,
-              "sonar-reasoning-pro",
-              Object.keys(options).length > 0 ? options : undefined
-            )
-          : await performChatCompletion(
-              messages,
-              "sonar-reasoning-pro",
-              Object.keys(options).length > 0 ? options : undefined
-            );
+          ? await performStreamingChatCompletion(messages, "sonar-reasoning-pro", optionsOrUndefined)
+          : await performChatCompletion(messages, "sonar-reasoning-pro", optionsOrUndefined);
         return {
           content: [{ type: "text", text: result }],
           isError: false,
@@ -1530,17 +1577,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!Array.isArray(args.messages)) {
           throw new Error("Invalid arguments for perplexity_research_async: 'messages' must be an array");
         }
-        const messages = args.messages;
-        const reasoningEffort = typeof args.reasoning_effort === "string" &&
-          ["low", "medium", "high"].includes(args.reasoning_effort)
-          ? (args.reasoning_effort as "low" | "medium" | "high")
-          : undefined;
-        const searchDomainFilter = Array.isArray(args.search_domain_filter)
-          ? args.search_domain_filter.filter((d): d is string => typeof d === "string")
-          : undefined;
+        if (!validateMessages(args.messages)) {
+          throw new Error("Invalid message format: each message must have string 'role' and 'content' properties");
+        }
+        const messages = args.messages as Array<{ role: string; content: string }>;
+        const commonOpts = buildCommonOptions(args as Record<string, unknown>);
         const options: { reasoning_effort?: "low" | "medium" | "high"; search_domain_filter?: string[] } = {};
-        if (reasoningEffort) options.reasoning_effort = reasoningEffort;
-        if (searchDomainFilter && searchDomainFilter.length > 0) options.search_domain_filter = searchDomainFilter;
+        if (commonOpts.reasoning_effort) options.reasoning_effort = commonOpts.reasoning_effort;
+        if (commonOpts.search_domain_filter && commonOpts.search_domain_filter.length > 0) options.search_domain_filter = commonOpts.search_domain_filter;
         const result = await startAsyncResearch(
           messages,
           Object.keys(options).length > 0 ? options : undefined

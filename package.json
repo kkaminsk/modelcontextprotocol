@@ -1,6 +1,6 @@
 {
   "name": "@perplexity-ai/mcp-server",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Official MCP server for Perplexity API Platform",
   "keywords": [
     "ai",
@@ -36,10 +36,7 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.1",
-    "axios": "^1.6.2",
-    "dotenv": "^16.3.1",
-    "openspec": "^0.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.1"
   },
   "devDependencies": {
     "@types/node": "^20",
